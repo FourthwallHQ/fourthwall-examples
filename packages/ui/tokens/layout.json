@@ -1,0 +1,27 @@
+{
+  "layout": {
+    "max-width": {
+      "page": { "$type": "dimension", "$value": "1200px" },
+      "narrow": { "$type": "dimension", "$value": "720px" },
+      "wide": { "$type": "dimension", "$value": "1440px" }
+    },
+    "breakpoint": {
+      "mobile": { "$type": "dimension", "$value": "640px" },
+      "tablet": { "$type": "dimension", "$value": "1024px" },
+      "desktop": { "$type": "dimension", "$value": "1280px" }
+    },
+    "grid": {
+      "columns": { "$type": "number", "$value": 12 },
+      "gutter": {
+        "mobile": { "$type": "dimension", "$value": "16px" },
+        "tablet": { "$type": "dimension", "$value": "20px" },
+        "desktop": { "$type": "dimension", "$value": "24px" }
+      },
+      "margin": {
+        "mobile": { "$type": "dimension", "$value": "16px" },
+        "tablet": { "$type": "dimension", "$value": "32px" },
+        "desktop": { "$type": "dimension", "$value": "48px" }
+      }
+    }
+  }
+}
