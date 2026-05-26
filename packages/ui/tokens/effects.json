@@ -1,0 +1,7 @@
+{
+  "shadow": {
+    "100": { "$type": "color", "$value": "0 1px 2px var(--color-black-alpha-700)" },
+    "200": { "$type": "color", "$value": "0 4px 12px var(--color-black-alpha-1000)" },
+    "300": { "$type": "color", "$value": "0 8px 32px var(--color-black-alpha-1100)" }
+  }
+}

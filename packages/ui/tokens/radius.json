@@ -1,0 +1,10 @@
+{
+  "radius": {
+    "brand": { "$type": "dimension", "$value": "8px" },
+    "full":  { "$type": "dimension", "$value": "9999px" }
+  },
+  "button-radius": { "$type": "dimension", "$value": "var(--radius-brand)" },
+  "image-radius":  { "$type": "dimension", "$value": "var(--radius-brand)" },
+  "input-radius":  { "$type": "dimension", "$value": "var(--radius-brand)" },
+  "panel-radius":  { "$type": "dimension", "$value": "12px" }
+}
