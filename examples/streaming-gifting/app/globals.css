@@ -1,0 +1,15 @@
+@import "tailwindcss";
+@import "@fourthwall-examples/ui/theme.css";
+
+/* Scan the component library's source so its utility classes are generated. */
+@source "../../../packages/ui/src";
+
+/*
+ * The overlay route is pasted into OBS as a browser source, which composites
+ * over the live scene — so its page must be transparent. The overlay page adds
+ * this class to <body> on mount (and removes it on unmount) so the control and
+ * chat pages keep their solid background.
+ */
+body.overlay-page {
+  background: transparent;
+}
