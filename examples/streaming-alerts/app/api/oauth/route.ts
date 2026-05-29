@@ -2,25 +2,34 @@ import { NextResponse } from "next/server";
 import {
   apiUrlFromBase,
   createWebhook,
+  deleteWebhook,
   exchangeToken,
   getCurrentShop,
 } from "@/lib/fourthwall";
-import { setConnection } from "@/lib/store";
+import { getSettings, upsertSettings } from "@/lib/store";
 
 // This route reads/writes the in-memory store and must never be cached.
 export const dynamic = "force-dynamic";
 
+// PLATFORM_APP_DISCONNECTED rides the same receiver: it's how the app learns the
+// creator uninstalled it (and how we forget their row). The order/donation hooks
+// are the actual alert triggers.
+const ORDER_TYPE = "ORDER_PLACED";
+const DONATION_TYPE = "DONATION";
+const DISCONNECT_TYPE = "PLATFORM_APP_DISCONNECTED";
+
 /**
- * GET /api/oauth — the server glue for connect.
+ * GET /api/oauth — the install callback.
  *
- * Fourthwall redirects the creator's browser to /oauth?code=…, which forwards
- * here. We:
+ * In an embed-first app, this runs once when the creator installs the platform
+ * app (Fourthwall redirects here with ?code). We:
  *   1. exchange the code for an access token (the one place we read the secret),
  *   2. resolve the shop,
- *   3. register the ORDER_PLACED + DONATION webhooks pointed at /api/webhooks,
- *   4. stash (shopId, accessToken, webhookSecret, webhookIds, showName=true),
- * then 302 the browser back to / in a connected state. On failure we redirect to
- * / with an ?error flag rather than dumping a stack trace at the creator.
+ *   3. tear down any webhooks a prior install left (idempotent re-install),
+ *   4. register ORDER_PLACED+PLATFORM_APP_DISCONNECTED and DONATION webhooks,
+ *   5. upsert the shop's settings row (keeping the token only this long),
+ * then hand the browser to /installed. After this the creator manages the app
+ * from Fourthwall's embedded settings page — there is no in-app connect button.
  */
 export async function GET(request: Request): Promise<Response> {
   const appId = process.env.NEXT_PUBLIC_FOURTHWALL_APP_ID;
@@ -28,12 +37,12 @@ export async function GET(request: Request): Promise<Response> {
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
   const fourthwallBaseUrl = process.env.NEXT_PUBLIC_FOURTHWALL_BASE_URL;
 
-  const homeUrl = new URL("/", baseUrl ?? request.url);
+  const doneUrl = new URL("/installed", baseUrl ?? request.url);
 
   function fail(reason: string): Response {
     console.error(`[oauth] ${reason}`);
-    homeUrl.searchParams.set("error", reason);
-    return NextResponse.redirect(homeUrl);
+    doneUrl.searchParams.set("error", reason);
+    return NextResponse.redirect(doneUrl);
   }
 
   if (!appId) return fail("missing_app_id");
@@ -59,26 +68,38 @@ export async function GET(request: Request): Promise<Response> {
     // 2. Access token → shopId.
     const shop = await getCurrentShop({ apiUrl, accessToken });
 
-    // 3. Register both webhooks at this app's receiver. Each create returns a
-    //    signing secret; for a given shop they share one per-shop secret, so we
-    //    keep the first and collect both ids for clean teardown on disconnect.
+    // 3. Best-effort teardown of a previous install's subscriptions so a
+    //    re-install doesn't leave duplicates delivering to the same receiver.
+    const previous = getSettings(shop.id);
+    if (previous) {
+      await Promise.all(
+        previous.webhookIds.map((id) =>
+          deleteWebhook({ apiUrl, accessToken, id }).catch((error) => {
+            console.error(`[oauth] failed to delete stale webhook ${id}:`, error);
+          }),
+        ),
+      );
+    }
+
+    // 4. Register the receivers. Both creates return the same per-shop signing
+    //    secret; we keep the first and collect both ids for clean teardown.
     const webhookUrl = `${baseUrl}/api/webhooks`;
     const [orderHook, donationHook] = await Promise.all([
-      createWebhook({ apiUrl, accessToken, url: webhookUrl, types: ["ORDER_PLACED"] }),
-      createWebhook({ apiUrl, accessToken, url: webhookUrl, types: ["DONATION"] }),
+      createWebhook({ apiUrl, accessToken, url: webhookUrl, types: [ORDER_TYPE, DISCONNECT_TYPE] }),
+      createWebhook({ apiUrl, accessToken, url: webhookUrl, types: [DONATION_TYPE] }),
     ]);
 
-    // 4. Stash everything later steps key off.
-    setConnection({
+    // 5. Persist the row. The token is intentionally NOT stored — it has done
+    //    its job (registering the webhooks) and the embedded settings page
+    //    re-proves identity by HMAC, not by holding a token.
+    upsertSettings({
       shopId: shop.id,
-      accessToken,
       webhookSecret: orderHook.secret || donationHook.secret,
       webhookIds: [orderHook.id, donationHook.id],
-      showName: true,
     });
 
-    return NextResponse.redirect(homeUrl);
+    return NextResponse.redirect(doneUrl);
   } catch (error) {
-    return fail(error instanceof Error ? error.message : "connect_failed");
+    return fail(error instanceof Error ? error.message : "install_failed");
   }
 }

@@ -1,99 +1,71 @@
-import {
-  Alert,
-  Card,
-  CardBody,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-  Tag,
-} from "@fourthwall-examples/ui";
-import { ConnectButton } from "@/components/ConnectButton";
-import { OverlayUrlCopy } from "@/components/OverlayUrlCopy";
-import { PrivacyToggle } from "@/components/PrivacyToggle";
-import { TestAlertButton } from "@/components/TestAlertButton";
-import { DisconnectButton } from "@/components/DisconnectButton";
-import { getCurrentConnection } from "@/lib/store";
+import { verifyEmbeddedSettings } from "@/lib/hmac";
+import { getSettings } from "@/lib/store";
+import { Settings } from "./Settings";
 
-// Reads in-memory connect state, so it must run fresh on every request.
+// Reads signed query params + in-memory state, so it must run fresh per request.
 export const dynamic = "force-dynamic";
 
-const ERROR_MESSAGES: Record<string, string> = {
-  missing_code: "Fourthwall didn't return an authorization code. Try connecting again.",
-  missing_app_id: "NEXT_PUBLIC_FOURTHWALL_APP_ID is not set in .env.local.",
-  missing_app_secret: "FOURTHWALL_APP_SECRET is not set in .env.local.",
-  missing_base_url: "NEXT_PUBLIC_BASE_URL is not set in .env.local.",
-  missing_fourthwall_base_url: "NEXT_PUBLIC_FOURTHWALL_BASE_URL is not set in .env.local.",
-};
+function firstParam(value: string | string[] | undefined): string | null {
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value ?? null;
+}
 
-export default async function ControlPage({
+/**
+ * / — the embedded settings page.
+ *
+ * Fourthwall iframes this inside the creator dashboard with signed `shop_id`,
+ * `hmac`, and `timestamp` query params. We HMAC-verify them server-side, then
+ * render the settings UI for the trusted shop. There is no connect button: the
+ * app is installed via OAuth (see /api/oauth) and managed from here.
+ *
+ * Locally, mint a signed URL with `GET /api/dev/settings-url?shop_id=sh_xxx`
+ * (dev only) and open it — the verification path is identical to production.
+ */
+export default async function Page({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ shop_id?: string | string[]; hmac?: string | string[]; timestamp?: string | string[] }>;
 }) {
-  const { error } = await searchParams;
-  const connection = getCurrentConnection();
+  const params = await searchParams;
+  const shopId = firstParam(params.shop_id);
+  const hmac = firstParam(params.hmac);
+  const timestamp = firstParam(params.timestamp);
+
+  const appId = process.env.NEXT_PUBLIC_FOURTHWALL_APP_ID;
+  const secret = process.env.FOURTHWALL_APP_HMAC_SECRET;
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? "";
 
+  if (!shopId || !hmac || !timestamp) {
+    return <Notice tone="muted">Open this settings page from your Fourthwall dashboard.</Notice>;
+  }
+  if (!appId || !secret || !verifyEmbeddedSettings({ shopId, appId, timestamp, hmac, secret })) {
+    return <Notice tone="critical">Invalid or expired settings link.</Notice>;
+  }
+
+  const row = getSettings(shopId);
+
   return (
-    <main className="flex min-h-screen items-center justify-center bg-muted p-8">
-      <div className="w-full max-w-xl space-y-6">
-        <div className="space-y-1 text-center">
-          <h1 className="text-3xl font-semibold tracking-tight">Streaming Alerts</h1>
-          <p className="text-muted-foreground">
-            On-stream alerts for your Fourthwall orders and tips.
-          </p>
-        </div>
-
-        {error && (
-          <Alert appearance="critical" title="Couldn’t connect">
-            {ERROR_MESSAGES[error] ?? error}
-          </Alert>
-        )}
-
-        {!connection ? (
-          <Card>
-            <CardHeader>
-              <CardTitle>Connect your shop</CardTitle>
-              <CardDescription>
-                Authorize this app to subscribe to your shop’s order and tip webhooks. Nothing is
-                stored on disk — the connection lives in memory until you disconnect or restart.
-              </CardDescription>
-            </CardHeader>
-            <CardBody>
-              <ConnectButton />
-            </CardBody>
-          </Card>
-        ) : (
-          <Card>
-            <CardHeader className="flex-row items-center justify-between">
-              <div>
-                <CardTitle>Shop connected</CardTitle>
-                <CardDescription>Paste the overlay URL into OBS as a browser source.</CardDescription>
-              </div>
-              <Tag appearance="success">Connected</Tag>
-            </CardHeader>
-            <CardBody className="space-y-6">
-              <OverlayUrlCopy url={`${baseUrl}/overlay/${connection.shopId}`} />
-
-              <PrivacyToggle initialShowName={connection.showName} />
-
-              <div className="flex flex-col gap-3 border-t border-border pt-5 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-sm text-muted-foreground">
-                  Fire a sample alert to confirm your browser source is wired up.
-                </p>
-                <TestAlertButton />
-              </div>
-
-              <div className="flex items-center justify-between border-t border-border pt-5">
-                <p className="text-sm text-muted-foreground">
-                  Disconnect to unregister the webhooks and forget the token.
-                </p>
-                <DisconnectButton />
-              </div>
-            </CardBody>
-          </Card>
-        )}
+    <main className="min-h-screen w-full bg-background">
+      <div className="w-full">
+        <Settings
+          initial={{
+            installed: !!row,
+            enabled: row?.enabled ?? true,
+            showSupporterName: row?.showSupporterName ?? true,
+            shopId,
+            overlayUrl: `${baseUrl}/overlay/${shopId}`,
+          }}
+          auth={{ shopId, hmac, timestamp }}
+        />
       </div>
+    </main>
+  );
+}
+
+function Notice({ tone, children }: { tone: "muted" | "critical"; children: React.ReactNode }) {
+  return (
+    <main className="flex min-h-screen items-center justify-center p-8">
+      <p className={tone === "critical" ? "text-text-critical" : "text-muted-foreground"}>{children}</p>
     </main>
   );
 }
