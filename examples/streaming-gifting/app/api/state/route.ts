@@ -24,7 +24,7 @@ export async function GET(request: Request) {
     offerId: connection.offerId,
     prizeName: connection.prizeName,
     threshold: connection.threshold,
-    webhooksActive: Boolean(connection.webhookSecret),
+    webhooksActive: connection.webhookIds.length > 0,
     baseUrl: process.env.NEXT_PUBLIC_BASE_URL ?? '',
     draw: connection.draw,
   });

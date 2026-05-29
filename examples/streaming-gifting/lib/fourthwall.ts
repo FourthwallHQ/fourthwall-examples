@@ -158,15 +158,16 @@ export async function finishGiveaway(
 }
 
 /**
- * Register a purchase-webhook subscription pointed at this app. The response
- * carries the signing `secret` the receiver verifies against — held in memory,
- * never an env var. Requires `webhook_write`.
+ * Register a purchase-webhook subscription pointed at this app. Returns the
+ * subscription `id` (kept so we can delete it on disconnect). Inbound events are
+ * verified with the app's HMAC key (see `lib/hmac.ts`), not a per-subscription
+ * secret. Requires `webhook_write`.
  */
 export async function createWebhook(
   accessToken: string,
   url: string,
   types: string[],
-): Promise<{ id: string; secret: string }> {
+): Promise<{ id: string }> {
   const res = await ensureOk(
     await fetch(`${apiUrl()}/open-api/v1.0/webhooks`, {
       method: 'POST',
@@ -175,8 +176,8 @@ export async function createWebhook(
     }),
     'Create webhook',
   );
-  const data = (await res.json()) as { id: string; secret: string };
-  return { id: data.id, secret: data.secret };
+  const data = (await res.json()) as { id: string };
+  return { id: data.id };
 }
 
 /** Remove a registered subscription (used on disconnect). Requires `webhook_write`. */

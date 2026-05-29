@@ -50,9 +50,12 @@ set live in memory and reset on restart. No database, no broker.
    | `NEXT_PUBLIC_BASE_URL` | Where this app runs (`http://localhost:3000`), used for the OAuth redirect, the webhook URL, and the overlay URL. |
    | `NEXT_PUBLIC_FOURTHWALL_BASE_URL` | The Fourthwall instance — `fourthwall.com` (or `staging.fourthwall.com`). The API host is derived as `api.<base>`. |
    | `FOURTHWALL_APP_SECRET` | The Platform App's client secret. **Server-only** — read solely in the `/api/oauth` token exchange. Never prefix it with `NEXT_PUBLIC_`. |
+   | `FOURTHWALL_APP_HMAC_KEY` | The Platform App's HMAC key, from the app's settings page. **Server-only** — used to verify inbound webhook signatures (`X-Fourthwall-Hmac-Apps-SHA256`). One fixed value per app, the same for every shop. |
 
-   The webhook signing secret is **not** an env var — it's returned by
-   create-webhook at connect time and held in memory.
+   The webhook HMAC key is your app's single key from the [Platform Apps
+   settings](https://my-shop.fourthwall.com/admin/dashboard/settings/platform-apps)
+   — **not** a per-shop or per-subscription secret, and not the value returned by
+   create-webhook.
 
 3. **Run it** (from this folder, or `pnpm --filter streaming-gifting dev` from the
    repo root):

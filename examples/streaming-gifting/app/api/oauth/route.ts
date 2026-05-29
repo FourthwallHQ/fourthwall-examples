@@ -40,7 +40,6 @@ export async function GET(request: Request): Promise<Response> {
     // Register the purchase webhooks. Best-effort: on a localhost base URL (no
     // public tunnel) Fourthwall can't reach this app, so we don't fail the
     // connect — the operator can still drive draws manually + via mock chat.
-    let webhookSecret: string | undefined;
     const webhookIds: string[] = [];
     try {
       const webhook = await createWebhook(
@@ -48,7 +47,6 @@ export async function GET(request: Request): Promise<Response> {
         `${baseUrl}/api/webhooks?shopId=${encodeURIComponent(shop.id)}`,
         ['ORDER_PLACED', 'GIFT_PURCHASE'],
       );
-      webhookSecret = webhook.secret;
       webhookIds.push(webhook.id);
     } catch (error) {
       console.warn(
@@ -62,7 +60,6 @@ export async function GET(request: Request): Promise<Response> {
       shopId: shop.id,
       domain: shop.domain,
       accessToken,
-      webhookSecret,
       webhookIds,
       products,
       threshold: 5,

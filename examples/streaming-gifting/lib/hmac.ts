@@ -1,6 +1,8 @@
 /**
  * Webhook signature verification. HMAC-SHA256 over the raw request body with the
- * stored per-shop secret, constant-time compared against the signature header.
+ * app's HMAC key, base64-encoded, constant-time compared against the signature
+ * header. The key is your Platform App's HMAC key from the app settings page —
+ * one fixed value per app, NOT a per-shop or per-subscription secret.
  */
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
@@ -9,17 +11,12 @@ export const SIGNATURE_HEADER = 'X-Fourthwall-Hmac-Apps-SHA256';
 
 export function verifySignature(
   rawBody: string,
-  secret: string,
+  appHmacKey: string,
   signature: string | null | undefined,
 ): boolean {
-  if (!signature || !secret) return false;
-  const digest = createHmac('sha256', secret).update(rawBody, 'utf8').digest();
-  // Accept either the base64 or hex encoding of the digest (confirm the exact
-  // form against the Fourthwall signature docs when wiring a real shop).
-  return (
-    safeEqual(digest.toString('base64'), signature) ||
-    safeEqual(digest.toString('hex'), signature)
-  );
+  if (!signature || !appHmacKey) return false;
+  const digest = createHmac('sha256', appHmacKey).update(rawBody, 'utf8').digest('base64');
+  return safeEqual(digest, signature);
 }
 
 function safeEqual(a: string, b: string): boolean {

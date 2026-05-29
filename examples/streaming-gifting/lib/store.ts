@@ -1,6 +1,6 @@
 /**
  * The in-memory store. Holds, per connected shop: the access token, the webhook
- * signing secret + ids, the product list, the pre-selected prize offer + display
+ * subscription ids, the product list, the pre-selected prize offer + display
  * name, the trigger threshold N, the qualifying-purchase counter, and the current
  * `Draw`. Everything resets on restart — no database, by design.
  *
@@ -14,8 +14,7 @@ export interface Connection {
   shopId: string;
   domain?: string;
   accessToken: string;
-  /** From the create-webhook response. Held in memory, never an env var. */
-  webhookSecret?: string;
+  /** The registered purchase-webhook subscription ids (deleted on disconnect). */
   webhookIds: string[];
   products: Product[];
   /** The pre-selected prize — the `offerId` winners redeem. */

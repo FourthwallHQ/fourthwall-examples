@@ -6,28 +6,35 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 /**
- * Purchase trigger. Verifies the HMAC signature against the stored per-shop
- * secret (401 on mismatch), counts qualifying purchases (ORDER_PLACED /
- * GIFT_PURCHASE), and on every Nth opens a draw via Create Giveaway.
+ * Purchase trigger. Verifies the HMAC signature against the app's HMAC key
+ * (401 on mismatch), counts qualifying purchases (ORDER_PLACED / GIFT_PURCHASE),
+ * and on every Nth opens a draw via Create Giveaway.
  */
 export async function POST(request: Request) {
+  const appHmacKey = process.env.FOURTHWALL_APP_HMAC_KEY;
+  if (!appHmacKey) {
+    return Response.json({ error: 'FOURTHWALL_APP_HMAC_KEY is not set' }, { status: 500 });
+  }
+
   const rawBody = await request.text();
   const signature = request.headers.get(SIGNATURE_HEADER);
-  const shopId = new URL(request.url).searchParams.get('shopId');
+
+  // The signature is keyed on the app's single HMAC key — verify before doing
+  // anything else.
+  if (!verifySignature(rawBody, appHmacKey, signature)) {
+    return Response.json({ error: 'Invalid signature' }, { status: 401 });
+  }
 
   // Resolve the connection from the registered ?shopId, falling back to the only
   // connected shop (the demo's single-shop happy path).
+  const shopId = new URL(request.url).searchParams.get('shopId');
   const connections = allConnections();
   const connection =
     (shopId ? getConnection(shopId) : undefined) ??
     (connections.length === 1 ? connections[0] : undefined);
 
-  if (!connection?.webhookSecret) {
-    return Response.json({ error: 'Unknown or unverifiable shop' }, { status: 401 });
-  }
-
-  if (!verifySignature(rawBody, connection.webhookSecret, signature)) {
-    return Response.json({ error: 'Invalid signature' }, { status: 401 });
+  if (!connection) {
+    return Response.json({ error: 'Unknown shop' }, { status: 404 });
   }
 
   let event: { type?: string } = {};
