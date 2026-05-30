@@ -8,20 +8,27 @@ legible. Companion to the [Alerts guide](https://docs.fourthwall.com/streaming/a
 
 ## Setup
 
-1. Create a new app in Fourthwall: [Platform Apps Settings](https://my-shop.fourthwall.com/admin/dashboard/settings/platform-apps/)
-   - Grant the **`webhook_write`** scope.
-   - In the **OAuth** tab set the redirect URI to `<base-url>/oauth`.
-   - Set the app's **embedded settings URL** to `<base-url>/` and note its **HMAC secret**.
-2. Make the app publicly reachable (Fourthwall delivers webhooks to it):
+1. Start a tunnel **first** — Fourthwall must reach this app over the public
+   internet (it delivers webhooks and iframes the settings page), and the app's
+   redirect URI + settings URL are configured against this `<base-url>`, so you
+   need it before step 2. This is a chicken-and-egg: get the URL, then register it.
    ```bash
    ngrok http 3000   # or: cloudflared tunnel --url http://localhost:3000
    ```
+   > **Prefer a stable URL.** A free ngrok tunnel mints a new URL every restart,
+   > which means re-editing the app config and `.env.local` each time. Use a
+   > reserved ngrok domain (`ngrok http --url=<your>.ngrok.app 3000`) or a named
+   > Cloudflare tunnel so `<base-url>` stays fixed across restarts.
+2. Create a new app in Fourthwall: [Platform Apps Settings](https://my-shop.fourthwall.com/admin/dashboard/settings/platform-apps/)
+   - Grant the **`webhook_write`** scope.
+   - In the **OAuth** tab set the redirect URI to `<base-url>/oauth`.
+   - Set the app's **embedded settings URL** to `<base-url>/` and note its **HMAC secret**.
 3. Create `.env.local` under `/streaming-alerts` (see `.env.local.example`):
    - `NEXT_PUBLIC_FOURTHWALL_APP_ID` — your app's id
    - `FOURTHWALL_APP_SECRET` — your app's OAuth client secret
    - `FOURTHWALL_APP_HMAC_SECRET` — the embedded-settings HMAC secret
    - `NEXT_PUBLIC_BASE_URL` — where this app runs (your tunnel URL)
-   - `NEXT_PUBLIC_FOURTHWALL_BASE_URL` — `fourthwall.com` (or `staging.fourthwall.com`)
+   - `NEXT_PUBLIC_FOURTHWALL_BASE_URL` — `fourthwall.com`
 4. Run it: `pnpm install && pnpm --filter streaming-alerts dev`
 5. Install the app from your Fourthwall dashboard, then open its **settings** there.
 6. Copy the overlay URL into OBS as a **Browser Source**, hit **Send test alert**,
