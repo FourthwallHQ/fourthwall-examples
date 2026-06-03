@@ -5,8 +5,8 @@ import type { Draw } from './draw';
 
 /**
  * Opens an `EventSource` to `GET /api/events/:shopId` and exposes the current
- * `Draw` state to the overlay and control page. Relies on the browser's built-in
- * SSE auto-reconnect — paste the overlay URL into OBS once and it stays live.
+ * `Draw` state to the operator cockpit. Relies on the browser's built-in SSE
+ * auto-reconnect, so the cockpit stays live without polling.
  */
 export function useDrawStream(shopId?: string): Draw | null {
   const [draw, setDraw] = useState<Draw | null>(null);

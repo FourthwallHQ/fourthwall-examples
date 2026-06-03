@@ -1,78 +1,71 @@
 'use client';
 
 import { useState } from 'react';
-import {
-  Alert,
-  Button,
-  Card,
-  CardBody,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@fourthwall-examples/ui';
+import { Alert, Button } from '@fourthwall-examples/ui';
+import { Section } from '@/components/Section';
 import type { Draw } from '@/lib/draw';
 
 /**
- * After finish: the winner, the copyable `redeemUrl`, and a pre-formatted chat
- * announcement. Copy-only — the example never posts on the operator's behalf.
+ * After the draw closes: the picked winner(s) and the single redeem link to
+ * broadcast. The per-winner gift links stay private — you post the redeem page to
+ * chat and only the winners (by chat name) can claim there. Mirrors the real flow,
+ * where the redeem page is public but gated by winner authentication.
  */
 export function WinnerPanel({ draw }: { draw: Draw }) {
-  const [copied, setCopied] = useState<null | 'url' | 'announcement'>(null);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedMsg, setCopiedMsg] = useState(false);
 
   if (draw.status !== 'finished') return null;
 
-  const winner = draw.winner;
-  if (!winner) {
+  if (draw.winners.length === 0) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>No winner</CardTitle>
-        </CardHeader>
-        <CardBody>
-          <Alert appearance="alert" title="Nobody entered">
-            The draw closed with no entrants, so the prize returned to the shop.
-          </Alert>
-        </CardBody>
-      </Card>
+      <Section title="No winner">
+        <Alert appearance="alert" title="Nobody entered">
+          The draw closed with no entrants, so no gift was handed out.
+        </Alert>
+      </Section>
     );
   }
 
-  const announcement = `🎉 @${winner.userName} won ${draw.prizeName}! Claim your free prize: ${
-    draw.redeemUrl ?? ''
-  }`;
+  const base = process.env.NEXT_PUBLIC_BASE_URL ?? '';
+  const redeemUrl = `${base}/redeem`;
+  const mentions = draw.winners.map((w) => `@${w.userName}`).join(', ');
+  const announcement = `🎉 ${mentions} won ${draw.offerName}! Redeem your gift at ${redeemUrl}`;
 
-  function copy(kind: 'url' | 'announcement', value: string) {
-    navigator.clipboard.writeText(value);
-    setCopied(kind);
-    setTimeout(() => setCopied(null), 1500);
+  function copy(text: string, set: (v: boolean) => void) {
+    navigator.clipboard.writeText(text);
+    set(true);
+    setTimeout(() => set(false), 1500);
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Winner</CardTitle>
-        <CardDescription>
-          Drawn from {draw.entrants.length} entrant{draw.entrants.length === 1 ? '' : 's'}.
-        </CardDescription>
-      </CardHeader>
-      <CardBody className="space-y-5">
+    <Section
+      title={draw.winners.length > 1 ? 'Winners' : 'Winner'}
+      description={`Drawn from ${draw.entrants.length} entrant${
+        draw.entrants.length === 1 ? '' : 's'
+      }. Broadcast the redeem link — only these winners can claim, by chat name.`}
+    >
+      <div className="space-y-5">
         <div className="rounded-panel border border-success/30 bg-success-subtle px-5 py-4">
-          <p className="text-sm text-muted-foreground">Winner</p>
-          <p className="text-2xl font-semibold">{winner.userName}</p>
+          <p className="text-sm text-muted-foreground">
+            {draw.winners.length > 1 ? `${draw.winners.length} winners` : 'Winner'}
+          </p>
+          <p className="text-2xl font-semibold">{draw.winners.map((w) => w.userName).join(', ')}</p>
         </div>
 
         <div className="space-y-2">
-          <p className="text-sm font-medium text-muted-foreground">Redeem URL</p>
+          <p className="text-sm font-medium text-muted-foreground">Redeem link (post in chat)</p>
           <div className="flex items-center gap-3">
-            <code className="min-w-0 flex-1 truncate rounded-control border border-border bg-muted px-3.5 py-2.5 font-mono text-sm">
-              {draw.redeemUrl ?? 'Not returned'}
-            </code>
-            <Button
-              appearance="secondary"
-              disabled={!draw.redeemUrl}
-              onClick={() => draw.redeemUrl && copy('url', draw.redeemUrl)}
+            <a
+              href={redeemUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="min-w-0 flex-1 truncate rounded-control border border-border bg-muted px-3.5 py-2.5 font-mono text-sm text-text-brand underline"
             >
-              {copied === 'url' ? 'Copied' : 'Copy'}
+              {redeemUrl}
+            </a>
+            <Button appearance="secondary" onClick={() => copy(redeemUrl, setCopiedLink)}>
+              {copiedLink ? 'Copied' : 'Copy'}
             </Button>
           </div>
         </div>
@@ -83,12 +76,12 @@ export function WinnerPanel({ draw }: { draw: Draw }) {
             <p className="min-w-0 flex-1 truncate rounded-control border border-border bg-muted px-3.5 py-2.5 text-sm">
               {announcement}
             </p>
-            <Button appearance="secondary" onClick={() => copy('announcement', announcement)}>
-              {copied === 'announcement' ? 'Copied' : 'Copy'}
+            <Button appearance="secondary" onClick={() => copy(announcement, setCopiedMsg)}>
+              {copiedMsg ? 'Copied' : 'Copy'}
             </Button>
           </div>
         </div>
-      </CardBody>
-    </Card>
+      </div>
+    </Section>
   );
 }

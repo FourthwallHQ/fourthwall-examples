@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
   Button,
   Card,
@@ -10,18 +11,8 @@ import {
   CardHeader,
   CardTitle,
   Input,
-  Select,
   Tag,
 } from '@fourthwall-examples/ui';
-
-/** A handful of stand-in viewers so you can populate a draw from one browser. */
-const MOCK_USERS = [
-  { userId: 'u_ava', userName: 'ava_plays' },
-  { userId: 'u_kai', userName: 'kai_stream' },
-  { userId: 'u_mia', userName: 'mia_gg' },
-  { userId: 'u_leo', userName: 'leo_live' },
-  { userId: 'u_zoe', userName: 'zoe_vods' },
-];
 
 interface PostedMessage {
   id: number;
@@ -31,31 +22,41 @@ interface PostedMessage {
   entrants: number;
 }
 
+/** Derive a stable userId from a username so entering twice as the same name dedupes. */
+function userIdFor(userName: string): string {
+  return `u_${userName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')}`;
+}
+
 /**
- * Pick a mock user and post a message; POSTs `/api/chat` so `!enter` populates
- * the open draw's participant set.
+ * Post mock chat messages as a specific viewer. The viewer's name comes from the
+ * `?user=` query param, so you can be *any* username — and open several tabs with
+ * different `?user=` values to populate a draw with distinct entrants. POSTs
+ * `/api/chat`, where `!enter` adds the sender to the open draw's participant set.
  */
-export function ChatComposer() {
-  const [userId, setUserId] = useState(MOCK_USERS[0].userId);
+function ChatComposerInner() {
+  const params = useSearchParams();
+  const queryUser = (params.get('user') ?? '').trim();
+  const userName = queryUser || 'guest';
+  const userId = userIdFor(userName);
+
   const [text, setText] = useState('!enter');
   const [sending, setSending] = useState(false);
   const [log, setLog] = useState<PostedMessage[]>([]);
 
   async function send() {
-    const user = MOCK_USERS.find((u) => u.userId === userId);
-    if (!user || !text.trim()) return;
+    if (!text.trim()) return;
     setSending(true);
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.userId, userName: user.userName, text }),
+        body: JSON.stringify({ userId, userName, text }),
       });
       const result = (await res.json()) as { entered?: boolean; entrants?: number };
       setLog((prev) => [
         {
           id: Date.now(),
-          userName: user.userName,
+          userName,
           text,
           entered: Boolean(result.entered),
           entrants: result.entrants ?? 0,
@@ -72,34 +73,26 @@ export function ChatComposer() {
       <CardHeader>
         <CardTitle>Mock chat</CardTitle>
         <CardDescription>
-          Post as a viewer. While a draw is open, <code className="font-mono">!enter</code> adds the
-          sender to the participant set.
+          Posting as <span className="font-semibold text-foreground">{userName}</span>. While a draw
+          is open, <code className="font-mono">!enter</code> adds the sender to the participant set.
         </CardDescription>
       </CardHeader>
       <CardBody className="space-y-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-          <Select
-            label="Send as"
-            value={userId}
-            onChange={(e) => setUserId(e.target.value)}
-            className="sm:max-w-48"
-          >
-            {MOCK_USERS.map((user) => (
-              <option key={user.userId} value={user.userId}>
-                {user.userName}
-              </option>
-            ))}
-          </Select>
-          <Input
-            label="Message"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') void send();
-            }}
-            className="flex-1"
-          />
-        </div>
+        {!queryUser && (
+          <p className="rounded-control border border-border bg-muted px-4 py-2.5 text-sm text-muted-foreground">
+            Add <code className="font-mono">?user=alice</code> to the URL to post as “alice”. Open
+            more tabs with different <code className="font-mono">?user=</code> values to enter as
+            distinct viewers. Defaulting to <span className="font-semibold">guest</span>.
+          </p>
+        )}
+        <Input
+          label="Message"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') void send();
+          }}
+        />
 
         {log.length > 0 && (
           <ul className="space-y-2">
@@ -131,5 +124,13 @@ export function ChatComposer() {
         </Button>
       </CardFooter>
     </Card>
+  );
+}
+
+export function ChatComposer() {
+  return (
+    <Suspense fallback={null}>
+      <ChatComposerInner />
+    </Suspense>
   );
 }

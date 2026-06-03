@@ -27,7 +27,8 @@ export async function POST(request: Request) {
   }
 
   const shopId = shopWithOpenDraw();
-  const isEnter = text.trim().toLowerCase().startsWith('!enter');
+  // Exact, case-insensitive `!enter` — same match the real Twitch gifting bot uses.
+  const isEnter = text.trim().toLowerCase() === '!enter';
 
   // No open draw, or not the `!enter` command → ignored.
   if (!shopId || !isEnter) {

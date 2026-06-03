@@ -26,11 +26,17 @@ export default function MockChatPage() {
       <ChatComposer />
 
       <p className="text-sm text-muted-foreground">
-        Open the{' '}
-        <Link href="/" className="font-medium text-text-brand underline">
-          control page
-        </Link>{' '}
-        to open a draw, then post <code className="font-mono">!enter</code> here as a few viewers.
+        Open the giveaway settings from your Fourthwall dashboard to open a draw, then post{' '}
+        <code className="font-mono">!enter</code> here. Add <code className="font-mono">?user=</code>{' '}
+        to the URL to choose your viewer name, and open more tabs (e.g.{' '}
+        <Link href="/chat?user=alice" className="font-medium text-text-brand underline">
+          ?user=alice
+        </Link>
+        ,{' '}
+        <Link href="/chat?user=bob" className="font-medium text-text-brand underline">
+          ?user=bob
+        </Link>
+        ) to enter as distinct viewers.
       </p>
     </main>
   );

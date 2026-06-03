@@ -1,22 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import {
-  Alert,
-  Button,
-  Card,
-  CardBody,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-  Tag,
-  type TagProps,
-} from '@fourthwall-examples/ui';
+import { Alert, Button, Tag, type TagProps } from '@fourthwall-examples/ui';
+import { Section } from '@/components/Section';
 import type { Draw } from '@/lib/draw';
+import type { EmbeddedAuth } from '@/lib/embeddedSettings';
 
 const STATUS_LABEL: Record<Draw['status'], string> = {
-  idle: 'Idle',
+  idle: 'Waiting',
   open: 'Open',
   finished: 'Finished',
 };
@@ -37,19 +28,12 @@ function Stat({ label, value }: { label: string; value: string }) {
 }
 
 /**
- * Live draw state — status, entrant count, countdown — plus the manual
- * `open` / `draw now` controls (POST `/api/draw/open`, `/api/draw/finish`).
+ * Live draw state — status, entrant count, countdown, and the chat announcement.
+ * Draws open automatically when a gift is purchased (the GIFT_PURCHASE webhook);
+ * "Draw now" just closes the window early (POST `/api/draw/finish`).
  */
-export function DrawPanel({
-  shopId,
-  draw,
-  hasPrize,
-}: {
-  shopId: string;
-  draw: Draw;
-  hasPrize: boolean;
-}) {
-  const [busy, setBusy] = useState<null | 'open' | 'finish'>(null);
+export function DrawPanel({ auth, draw }: { auth: EmbeddedAuth; draw: Draw }) {
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
 
@@ -63,68 +47,62 @@ export function DrawPanel({
   const secondsLeft =
     draw.status === 'open' && draw.endsAt ? Math.max(0, Math.ceil((draw.endsAt - now) / 1000)) : null;
 
-  async function act(action: 'open' | 'finish') {
-    setBusy(action);
+  async function drawNow() {
+    setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/draw/${action}?shopId=${encodeURIComponent(shopId)}`, {
-        method: 'POST',
-      });
+      const signed = new URLSearchParams({
+        shop_id: auth.shopId,
+        hmac: auth.hmac,
+        timestamp: auth.timestamp,
+      }).toString();
+      const res = await fetch(`/api/draw/finish?${signed}`, { method: 'POST' });
       if (!res.ok) {
-        throw new Error(((await res.json()) as { error?: string }).error ?? `Failed to ${action} draw`);
+        throw new Error(((await res.json()) as { error?: string }).error ?? 'Failed to draw');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : `Failed to ${action} draw`);
+      setError(err instanceof Error ? err.message : 'Failed to draw');
     } finally {
-      setBusy(null);
+      setBusy(false);
     }
   }
 
+  const description =
+    draw.status === 'idle'
+      ? 'Waiting for a gift purchase — each one opens a draw.'
+      : draw.quantity > 1
+        ? `${draw.offerName} · ${draw.quantity} winners`
+        : draw.offerName;
+
   return (
-    <Card>
-      <CardHeader className="flex-row items-center justify-between">
-        <div>
-          <CardTitle>Current draw</CardTitle>
-          <CardDescription>
-            {draw.prizeName ? `Prize: ${draw.prizeName}` : 'No prize selected yet'}
-          </CardDescription>
-        </div>
-        <Tag appearance={STATUS_APPEARANCE[draw.status]}>{STATUS_LABEL[draw.status]}</Tag>
-      </CardHeader>
-      <CardBody className="space-y-4">
+    <Section
+      title="Current draw"
+      description={description}
+      aside={<Tag appearance={STATUS_APPEARANCE[draw.status]}>{STATUS_LABEL[draw.status]}</Tag>}
+      footer={
+        draw.status === 'open' ? (
+          <Button appearance="primary" loading={busy} onClick={drawNow}>
+            Draw now
+          </Button>
+        ) : null
+      }
+    >
+      <div className="space-y-4">
         {error && (
           <Alert appearance="critical" title="Something went wrong">
             {error}
           </Alert>
         )}
-        {!hasPrize && (
-          <Alert appearance="alert" title="Pick a prize first">
-            Select a prize above before opening a draw.
-          </Alert>
+        {draw.announcement && draw.status === 'open' && (
+          <p className="rounded-control border border-border bg-muted px-4 py-2.5 text-sm">
+            {draw.announcement}
+          </p>
         )}
         <div className="flex items-center gap-10">
           <Stat label="Entrants" value={String(draw.entrants.length)} />
           {secondsLeft !== null && <Stat label="Closes in" value={`${secondsLeft}s`} />}
         </div>
-      </CardBody>
-      <CardFooter>
-        <Button
-          appearance="secondary"
-          loading={busy === 'open'}
-          disabled={draw.status === 'open' || !hasPrize}
-          onClick={() => act('open')}
-        >
-          Open draw
-        </Button>
-        <Button
-          appearance="primary"
-          loading={busy === 'finish'}
-          disabled={draw.status !== 'open'}
-          onClick={() => act('finish')}
-        >
-          Draw now
-        </Button>
-      </CardFooter>
-    </Card>
+      </div>
+    </Section>
   );
 }

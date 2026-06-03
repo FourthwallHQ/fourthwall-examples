@@ -5,7 +5,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 /**
- * SSE transport feeding both the overlay and the control page. Opens a
+ * SSE transport feeding the operator cockpit. Opens a
  * `text/event-stream`, sends the current draw immediately, then writes one
  * `data:` line per draw-state change (opened / entrant-count / finished). Tears
  * down on disconnect; the browser's `EventSource` auto-reconnects.

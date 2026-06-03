@@ -4,13 +4,13 @@ import { Suspense, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 
 /**
- * /oauth — the OAuth redirect target.
+ * /oauth — the install redirect target.
  *
  * The registered Platform App points its redirect URI here. Fourthwall returns
  * with ?code=…; we hand that straight to GET /api/oauth via a full-page
  * navigation. That server route does the token exchange + webhook registration,
- * then 302-redirects the browser back to / connected — so this page is just a
- * brief "connecting…" hand-off.
+ * then redirects the browser to /installed — so this page is just a brief
+ * "installing…" hand-off.
  */
 function OAuthRedirect() {
   const searchParams = useSearchParams();
@@ -20,7 +20,7 @@ function OAuthRedirect() {
     if (code) {
       window.location.replace(`/api/oauth?code=${encodeURIComponent(code)}`);
     } else {
-      window.location.replace('/?error=missing_code');
+      window.location.replace('/installed?error=missing_code');
     }
   }, [searchParams]);
 
@@ -31,7 +31,7 @@ function OAuthRedirect() {
           aria-hidden
           className="mx-auto size-8 animate-spin rounded-full border-2 border-border border-t-foreground"
         />
-        <p className="text-muted-foreground">Connecting your Fourthwall shop…</p>
+        <p className="text-muted-foreground">Installing Streaming Gifting…</p>
       </div>
     </main>
   );

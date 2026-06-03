@@ -1,31 +1,44 @@
 import { getConnection } from '@/lib/store';
+import { getVerifiedShopId } from '@/lib/embeddedSettings';
+import { getGiftingConfig, listProducts } from '@/lib/fourthwall';
 
 export const dynamic = 'force-dynamic';
 
 /**
- * Bootstrap snapshot for the control page: the product list (for prize
- * selection), the current settings, and the current draw. Live draw updates
- * after this initial load arrive over `GET /api/events/:shopId` (SSE), which
- * carries only the `Draw`; this endpoint supplies the connection-level data the
- * operator cockpit needs to render.
+ * Bootstrap snapshot for the embedded settings page: the product list (for the
+ * giftable-products policy), the saved gifting config, and the current draw.
+ * Authenticated by the signed embedded-settings params. Caches the entry-window
+ * length on the connection so the webhook handler can size the window without a
+ * round-trip. Live draw updates after this load arrive over `GET /api/events/:shopId`.
  */
 export async function GET(request: Request) {
-  const shopId = new URL(request.url).searchParams.get('shopId');
-  const connection = shopId ? getConnection(shopId) : undefined;
+  const verified = getVerifiedShopId(request);
+  if ('response' in verified) return verified.response;
+
+  const connection = getConnection(verified.shopId);
   if (!connection) {
     return Response.json({ connected: false });
   }
 
-  return Response.json({
-    connected: true,
+  const base = {
+    connected: true as const,
     shopId: connection.shopId,
     domain: connection.domain,
-    products: connection.products,
-    offerId: connection.offerId,
-    prizeName: connection.prizeName,
-    threshold: connection.threshold,
     webhooksActive: connection.webhookIds.length > 0,
-    baseUrl: process.env.NEXT_PUBLIC_BASE_URL ?? '',
     draw: connection.draw,
-  });
+  };
+
+  try {
+    const [products, config] = await Promise.all([
+      listProducts(connection.accessToken),
+      getGiftingConfig(connection.accessToken),
+    ]);
+    connection.entryTimeLimitSeconds = config.entryTimeLimitSeconds;
+    return Response.json({ ...base, products, config });
+  } catch (error) {
+    // Surface upstream failures (e.g. a scope 403 reading products/config) as a
+    // clean JSON error the cockpit can render — never a 500 the client can't parse.
+    const message = error instanceof Error ? error.message : 'Failed to load gifting config';
+    return Response.json({ ...base, error: message });
+  }
 }
