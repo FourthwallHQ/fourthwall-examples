@@ -23,4 +23,9 @@ export {
   type ModalProps,
 } from './components/Modal';
 export { Tabs, type TabItem, type TabsProps } from './components/Tabs';
+export { Avatar, type AvatarProps } from './components/Avatar';
+export { ChatBubble, type ChatBubbleProps } from './components/ChatBubble';
+export { ChatTurn, type ChatTurnProps } from './components/ChatTurn';
+export { ToolCall, type ToolCallProps, type ToolCallStatus } from './components/ToolCall';
+export { Composer, type ComposerProps } from './components/Composer';
 export { cn } from './lib/cn';

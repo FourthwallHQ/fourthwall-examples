@@ -219,6 +219,7 @@
   --text-pro: light-dark(var(--color-purple-500), var(--color-purple-200));
   --text-secondary: light-dark(var(--color-gray-800), var(--color-gray-600));
   --text-secondary-invert: light-dark(var(--color-gray-600), var(--color-gray-800));
+  --text-tertiary: light-dark(var(--color-gray-600), var(--color-gray-800));
   --text-success: light-dark(var(--color-green-500), var(--color-green-500));
   --text-success-secondary: light-dark(var(--color-green-600), var(--color-green-400));
   --text-success-tertiary: light-dark(var(--color-green-700), var(--color-green-300));
