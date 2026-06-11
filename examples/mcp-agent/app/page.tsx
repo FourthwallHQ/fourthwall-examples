@@ -1,21 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Button, Composer } from "@fourthwall-examples/ui";
+import { Composer } from "@fourthwall-examples/ui";
 import { Thread } from "@/components/Thread";
 import { StarterPrompts } from "@/components/StarterPrompts";
 import { ConnectGate } from "@/components/ConnectGate";
+import { UserMenu } from "@/components/UserMenu";
 import type { ChatResponse, Decision, StreamEvent, ToolEvent, WireMessage } from "@/lib/types";
 import type { AssistantDisplayTurn, DisplayTurn } from "@/lib/clientTypes";
-
-function initialsOf(label: string): string {
-  return label
-    .split(/[^a-zA-Z0-9]+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((word) => word[0].toUpperCase())
-    .join("");
-}
 
 function mergeTrace(existing: ToolEvent[], incoming: ToolEvent[]): ToolEvent[] {
   const merged = [...existing];
@@ -198,19 +190,7 @@ export default function Page() {
             </span>
           </div>
         </div>
-        {connected && (
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-2 rounded-full border border-border py-1 pl-1 pr-3">
-              <span className="flex size-6 items-center justify-center rounded-full bg-accent text-[11px] font-semibold text-muted-foreground">
-                {initialsOf(shop ?? "Fourthwall")}
-              </span>
-              <span className="text-sm font-medium">{shop ?? "Connected"}</span>
-            </div>
-            <Button appearance="semi-transparent" size="xsmall" onClick={logout}>
-              Log out
-            </Button>
-          </div>
-        )}
+        {connected && <UserMenu shop={shop} onLogout={logout} />}
       </header>
 
       <main className="flex-1">
