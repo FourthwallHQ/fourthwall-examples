@@ -1,8 +1,8 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import type Anthropic from "@anthropic-ai/sdk";
-
-const MCP_URL = process.env.FOURTHWALL_MCP_URL ?? "https://mcp.fourthwall.com/";
+import { MCP_URL, oauthProvider } from "./oauth";
 
 export interface McpTool {
   name: string;
@@ -15,14 +15,15 @@ export interface McpTool {
   };
 }
 
-/** The expected failure: the short-lived MCP token has expired. */
+/** The expected failure: no Fourthwall session, or one the server rejected. */
 export class McpAuthError extends Error {
   constructor() {
-    super("401 Unauthorized — the MCP server rejected the access token");
+    super("The Fourthwall MCP server rejected the session — reconnect your account.");
   }
 }
 
 function isAuthError(err: unknown): boolean {
+  if (err instanceof UnauthorizedError) return true;
   const message = err instanceof Error ? err.message : String(err);
   return /\b401\b|unauthorized|invalid[_ ]token/i.test(message);
 }
@@ -33,9 +34,11 @@ export interface McpConnection {
   close: () => Promise<void>;
 }
 
-export async function connectMcp(token: string): Promise<McpConnection> {
+export async function connectMcp(): Promise<McpConnection> {
+  // The authProvider attaches the stored OAuth tokens and refreshes them when
+  // they expire; it throws UnauthorizedError when interactive login is needed.
   const transport = new StreamableHTTPClientTransport(new URL(MCP_URL), {
-    requestInit: { headers: { Authorization: `Bearer ${token}` } },
+    authProvider: oauthProvider,
   });
   const client = new Client({ name: "fourthwall-mcp-agent-example", version: "0.1.0" });
 

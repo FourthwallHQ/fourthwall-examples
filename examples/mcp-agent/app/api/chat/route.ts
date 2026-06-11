@@ -14,13 +14,8 @@ function error(
 }
 
 export async function POST(request: Request): Promise<NextResponse<ChatResponse>> {
-  const mcpToken = process.env.FOURTHWALL_MCP_TOKEN;
-  if (!process.env.ANTHROPIC_API_KEY || !mcpToken) {
-    return error(
-      "config",
-      "Set ANTHROPIC_API_KEY and FOURTHWALL_MCP_TOKEN in .env.local (see .env.local.example).",
-      500,
-    );
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return error("config", "Set ANTHROPIC_API_KEY in .env.local (see .env.local.example).", 500);
   }
 
   let body: ChatRequest;
@@ -38,7 +33,6 @@ export async function POST(request: Request): Promise<NextResponse<ChatResponse>
       messages: body.messages,
       decision: body.decision,
       allowWrites: process.env.FOURTHWALL_MCP_ALLOW_WRITES === "true",
-      mcpToken,
     });
     return NextResponse.json(outcome);
   } catch (err) {

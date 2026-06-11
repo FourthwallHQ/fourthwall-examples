@@ -75,7 +75,6 @@ export interface TurnInput {
   messages: WireMessage[];
   decision?: Decision;
   allowWrites: boolean;
-  mcpToken: string;
 }
 
 export async function runTurn(input: TurnInput): Promise<ChatResponse> {
@@ -85,7 +84,7 @@ export async function runTurn(input: TurnInput): Promise<ChatResponse> {
 
   let mcp: McpConnection;
   try {
-    mcp = await connectMcp(input.mcpToken);
+    mcp = await connectMcp();
   } catch (err) {
     if (err instanceof McpAuthError) {
       return { type: "error", trace, errorKind: "auth", message: err.message };

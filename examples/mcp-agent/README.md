@@ -51,30 +51,35 @@ and the system prompt explains the mode. The polymorphic `manage_*` tools stay
 offered so their read actions keep working; a write action on one is refused
 with an explanatory tool result rather than executed.
 
+## Authentication — in-app MCP OAuth
+
+The Fourthwall MCP server authenticates with standard MCP OAuth, and this
+example does the whole dance itself (`lib/oauth.ts` + `/api/auth/*`):
+
+1. **Connect Fourthwall** redirects to `/api/auth/login`, which uses the MCP
+   SDK's `auth()` orchestrator: it discovers the server's OAuth metadata,
+   **dynamically registers** this app as a client (no pre-provisioned client
+   id), and redirects you to Fourthwall's login with PKCE.
+2. Fourthwall sends you back to `/api/auth/callback`, which exchanges the code
+   for tokens.
+3. The MCP transport is constructed with the same `authProvider`, so requests
+   carry the access token and the SDK **refreshes it automatically** when it
+   expires.
+
+The session (client registration + tokens) is held in memory, single-user —
+restarting the dev server forgets it, and reconnecting is one click. If the
+server rejects the session mid-conversation (refresh token revoked or
+expired), the turn surfaces a critical alert with a **Reconnect** button.
+
 ## Setup
 
 ```bash
 cp .env.local.example .env.local
 ```
 
-You need two secrets:
-
-- **`ANTHROPIC_API_KEY`** — from the [Anthropic Console](https://console.anthropic.com/).
-- **`FOURTHWALL_MCP_TOKEN`** — a short-lived JWT for the Fourthwall MCP server,
-  minted out-of-band (there is no in-app OAuth — a deliberate non-goal):
-
-  ```bash
-  npx @modelcontextprotocol/inspector
-  ```
-
-  In the inspector: transport **Streamable HTTP**, URL
-  `https://mcp.fourthwall.com/mcp`, then **Open Auth Settings → Quick OAuth
-  Flow** and sign in with your Fourthwall account. Copy the resulting access
-  token into `.env.local`.
-
-  The token expires after a while; when it does, the failed call shows the raw
-  401 in its trace line and an alert walks through re-minting. Update the token
-  and restart the dev server.
+One secret: **`ANTHROPIC_API_KEY`** — from the
+[Anthropic Console](https://console.anthropic.com/). Fourthwall credentials
+are handled by the in-app OAuth flow above.
 
 Then, from the monorepo root:
 
@@ -83,7 +88,7 @@ pnpm install
 pnpm --filter mcp-agent dev
 ```
 
-Open http://localhost:3000.
+Open http://localhost:3000 and click **Connect Fourthwall**.
 
 To exercise the approval gate, set `FOURTHWALL_MCP_ALLOW_WRITES=true` and ask
 for something like *"Create a 15% discount code SUMMER15"* — the turn blocks on
@@ -101,5 +106,8 @@ This is an example, tuned for legibility over efficiency:
   pause/resume protocol trivially stateless.
 - **A hard cap** (12 tool calls per turn) stops a runaway loop; on hitting it
   the agent answers with what it has.
-- **In-memory everything** — no database; refresh the page and the
-  conversation is gone.
+- **In-memory everything** — no database. The conversation lives in the
+  browser tab and the OAuth session (client registration + tokens) in the
+  server process; a dev-server restart means reconnecting, a page refresh
+  means a fresh conversation. A real app would persist the OAuth session and
+  scope it per user.

@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Composer } from "@fourthwall-examples/ui";
 import { Thread } from "@/components/Thread";
 import { StarterPrompts } from "@/components/StarterPrompts";
+import { ConnectGate } from "@/components/ConnectGate";
 import type { ChatResponse, Decision, ToolEvent, WireMessage } from "@/lib/types";
 import type { AssistantDisplayTurn, DisplayTurn } from "@/lib/clientTypes";
 
@@ -47,6 +48,24 @@ export default function Page() {
   const [turns, setTurns] = useState<DisplayTurn[]>([]);
   const [messages, setMessages] = useState<WireMessage[]>([]);
   const [busy, setBusy] = useState(false);
+  const [connected, setConnected] = useState<boolean | null>(null);
+  const [authError, setAuthError] = useState<string | undefined>();
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const failed = url.searchParams.get("auth_error");
+    if (failed) {
+      url.searchParams.delete("auth_error");
+      window.history.replaceState(null, "", url.toString());
+    }
+    fetch("/api/auth/status")
+      .then((response) => response.json())
+      .then((data: { connected: boolean }) => {
+        setConnected(data.connected);
+        if (failed) setAuthError(failed);
+      })
+      .catch(() => setConnected(false));
+  }, []);
 
   const lastTurn = turns[turns.length - 1];
   const pending = lastTurn?.kind === "assistant" ? lastTurn.pending : undefined;
@@ -134,8 +153,10 @@ export default function Page() {
       </header>
 
       <main className="flex-1">
-        {turns.length === 0 ? (
-          <StarterPrompts onPick={send} />
+        {connected === false ? (
+          <ConnectGate authError={authError} />
+        ) : turns.length === 0 ? (
+          connected != null && <StarterPrompts onPick={send} />
         ) : (
           <Thread turns={turns} busy={busy} onDecide={decide} onDismissAlert={dismissAlert} />
         )}
@@ -144,8 +165,8 @@ export default function Page() {
       <div className="sticky bottom-0 bg-background pb-5 pt-3">
         <Composer
           placeholder={pending ? "Waiting for your decision…" : "Ask about your shop…"}
-          disabled={busy || pending != null}
-          meta="Connected to mcp.fourthwall.com"
+          disabled={busy || pending != null || connected !== true}
+          meta={connected ? "Connected to mcp.fourthwall.com" : "Not connected"}
           onSend={send}
         />
       </div>
