@@ -15,6 +15,8 @@ export interface AssistantDisplayTurn {
   errorMessage?: string;
   /** True while the turn's request is in flight and nothing has rendered yet. */
   thinking?: boolean;
+  /** Set when resuming after a decision: the next text delta needs a paragraph break. */
+  sepPending?: boolean;
 }
 
 export type DisplayTurn = UserDisplayTurn | AssistantDisplayTurn;

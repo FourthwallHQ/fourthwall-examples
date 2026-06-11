@@ -8,14 +8,22 @@ import {
   type McpTool,
 } from "./mcp";
 import { classifyCall } from "./writeClassifier";
-import type { ChatResponse, Decision, ToolEvent, WireMessage } from "./types";
+import type {
+  ChatResponse,
+  Decision,
+  StreamEvent,
+  ToolEvent,
+  WireMessage,
+} from "./types";
 
 const MODEL = "claude-opus-4-8";
 const MAX_TOKENS = 2048;
 /** Hard cap on tool calls per turn so a misbehaving model can't fan out. */
 const MAX_TOOL_CALLS = 12;
 
-const SYSTEM_PROMPT = `You are a shop assistant for a creator's Fourthwall shop. Answer questions with live data fetched through the Fourthwall MCP tools — never invent numbers, orders, or products. Keep answers short and concrete; use lists for rankings and enumerations.
+const systemPrompt = () => `You are a shop assistant for a creator's Fourthwall shop. Answer questions with live data fetched through the Fourthwall MCP tools — never invent numbers, orders, or products. Keep answers short and concrete; use lists for rankings and enumerations. Answer in Markdown.
+
+Today's date is ${new Date().toISOString().slice(0, 10)}.
 
 Tool calls that change the shop pause for the creator's explicit approval. If a call is denied, do not retry it — acknowledge the denial and offer a softer alternative.`;
 
@@ -68,12 +76,17 @@ function findPendingToolUse(
 export interface TurnInput {
   messages: WireMessage[];
   decision?: Decision;
+  /** Live progress sink — text deltas and tool-trace upserts as they happen. */
+  emit?: (event: StreamEvent) => void;
 }
 
 export async function runTurn(input: TurnInput): Promise<ChatResponse> {
   const anthropic = new Anthropic();
+  const emit = input.emit ?? (() => {});
   const messages = [...input.messages];
   const trace: ToolEvent[] = [];
+  const textParts: string[] = [];
+  let streamedText = false;
 
   let mcp: McpConnection;
   try {
@@ -94,10 +107,25 @@ export async function runTurn(input: TurnInput): Promise<ChatResponse> {
       decision?: "allowed",
     ): Promise<ChatResponse | undefined> => {
       const args = block.input as Record<string, unknown>;
+      const settle = (event: ToolEvent) => {
+        trace.push(event);
+        emit({ type: "tool", event });
+      };
+      emit({
+        type: "tool",
+        event: {
+          id: block.id,
+          name: block.name,
+          input: args,
+          status: "pending",
+          summary: "running…",
+          decision,
+        },
+      });
       try {
         const result = await callTool(mcp.client, block.name, args);
         messages.push(toolResultMessage(block.id, result.text, result.isError));
-        trace.push({
+        settle({
           id: block.id,
           name: block.name,
           input: args,
@@ -112,7 +140,7 @@ export async function runTurn(input: TurnInput): Promise<ChatResponse> {
         // Keep the transcript valid (the dangling tool_use gets a result) and
         // surface the expected failure as the trace line + recovery alert.
         messages.push(toolResultMessage(block.id, err.message, true));
-        trace.push({
+        settle({
           id: block.id,
           name: block.name,
           input: args,
@@ -146,42 +174,64 @@ export async function runTurn(input: TurnInput): Promise<ChatResponse> {
             true,
           ),
         );
-        trace.push({
+        const event: ToolEvent = {
           id: block.id,
           name: block.name,
           input: block.input as Record<string, unknown>,
           status: "error",
           summary: "",
           decision: "denied",
-        });
+        };
+        trace.push(event);
+        emit({ type: "tool", event });
       }
     }
 
+    const emitText = (delta: string) => {
+      if (!streamedText) {
+        streamedText = true;
+      }
+      emit({ type: "text_delta", delta });
+    };
+
     let toolCalls = 0;
     for (let round = 0; round < MAX_TOOL_CALLS + 3; round++) {
-      const response = await anthropic.messages.create({
+      const messageStream = anthropic.messages.stream({
         model: MODEL,
         max_tokens: MAX_TOKENS,
-        system: SYSTEM_PROMPT,
+        system: systemPrompt(),
         messages,
         tools: claudeTools,
         // One tool_use per round keeps the pause/resume protocol stateless: a
         // paused write is always the lone dangling call in the transcript.
         tool_choice: { type: "auto", disable_parallel_tool_use: true },
       });
+
+      let firstDeltaOfRound = true;
+      messageStream.on("text", (delta) => {
+        if (firstDeltaOfRound) {
+          firstDeltaOfRound = false;
+          if (streamedText) emitText("\n\n");
+        }
+        emitText(delta);
+      });
+
+      const response = await messageStream.finalMessage();
       messages.push({ role: "assistant", content: response.content });
+
+      const roundText = response.content
+        .filter((block): block is Anthropic.Messages.TextBlock => block.type === "text")
+        .map((block) => block.text)
+        .join("\n")
+        .trim();
+      if (roundText) textParts.push(roundText);
 
       const toolUse = response.content.find(
         (block): block is Anthropic.Messages.ToolUseBlock => block.type === "tool_use",
       );
 
       if (response.stop_reason !== "tool_use" || !toolUse) {
-        const text = response.content
-          .filter((block): block is Anthropic.Messages.TextBlock => block.type === "text")
-          .map((block) => block.text)
-          .join("\n")
-          .trim();
-        return { type: "turn_complete", messages, trace, text };
+        return { type: "turn_complete", messages, trace, text: textParts.join("\n\n") };
       }
 
       const args = toolUse.input as Record<string, unknown>;
@@ -204,13 +254,15 @@ export async function runTurn(input: TurnInput): Promise<ChatResponse> {
       };
 
       if (classifyCall(tool, args) === "write") {
-        trace.push({
+        const event: ToolEvent = {
           id: toolUse.id,
           name: toolUse.name,
           input: args,
           status: "pending",
           summary: "awaiting approval",
-        });
+        };
+        trace.push(event);
+        emit({ type: "tool", event });
         return {
           type: "awaiting_approval",
           messages,
@@ -223,12 +275,11 @@ export async function runTurn(input: TurnInput): Promise<ChatResponse> {
       if (failure) return failure;
     }
 
-    return {
-      type: "turn_complete",
-      messages,
-      trace,
-      text: "I couldn't finish within this turn's tool-call limit. Try a narrower question.",
-    };
+    const capNotice = "I couldn't finish within this turn's tool-call limit. Try a narrower question.";
+    if (streamedText) emitText("\n\n");
+    emitText(capNotice);
+    textParts.push(capNotice);
+    return { type: "turn_complete", messages, trace, text: textParts.join("\n\n") };
   } finally {
     await mcp.close().catch(() => {});
   }

@@ -29,6 +29,10 @@ and writes block on your approval.
    line with its arguments behind a disclosure, and decisions stay audited
    (`· approved by you` / `· denied by you`).
 
+The route responds with an **NDJSON stream**: `text_delta` and `tool` events
+render live (Markdown included) as the loop runs, and the last line is the
+terminal payload — the completed turn, an approval request, or an error.
+
 ## Write classification
 
 A call pauses for approval when it would change the shop. Classification reads,

@@ -67,19 +67,22 @@ export function toClaudeTools(tools: McpTool[]): Anthropic.Messages.Tool[] {
 
 /**
  * Looks up the shop the OAuth session is bound to, for the header pill.
- * Best-effort: any failure (or an unexpected catalog shape) just means no
- * label.
+ * `ecommerce_get-current-shop` answers in YAML-ish text; we want one line of
+ * it. Best-effort: any failure just means no label.
  */
 export async function fetchShopLabel(): Promise<string | undefined> {
   let mcp: McpConnection | undefined;
   try {
     mcp = await connectMcp();
-    const result = await mcp.client.callTool({ name: "show_shops", arguments: {} });
-    const structured = result.structuredContent as
-      | { shops?: Array<{ name?: string; isCurrent?: boolean }> }
-      | undefined;
-    const shops = structured?.shops ?? [];
-    return (shops.find((shop) => shop.isCurrent) ?? shops[0])?.name;
+    const result = await mcp.client.callTool({
+      name: "ecommerce_get-current-shop",
+      arguments: {},
+    });
+    const content = Array.isArray(result.content) ? result.content : [];
+    const text = content.find((block) => block.type === "text")?.text ?? "";
+    const field = (key: string) =>
+      text.match(new RegExp(`^${key}: *"?([^"\\n]+?)"?$`, "m"))?.[1]?.trim();
+    return field("primaryDomain") ?? field("name");
   } catch {
     return undefined;
   } finally {

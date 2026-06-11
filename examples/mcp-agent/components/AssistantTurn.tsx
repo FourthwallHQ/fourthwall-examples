@@ -2,6 +2,7 @@ import { ChatTurn } from "@fourthwall-examples/ui";
 import { ToolTrace } from "./ToolTrace";
 import { ApprovalPanel } from "./ApprovalPanel";
 import { TokenAlert } from "./TokenAlert";
+import { MarkdownText } from "./MarkdownText";
 import type { AssistantDisplayTurn } from "@/lib/clientTypes";
 
 export function AssistantTurn({
@@ -23,7 +24,7 @@ export function AssistantTurn({
       {turn.errorMessage && !turn.authError && (
         <p className="text-base text-muted-foreground">{turn.errorMessage}</p>
       )}
-      {turn.text && <div className="whitespace-pre-wrap text-base leading-relaxed">{turn.text}</div>}
+      {turn.text && <MarkdownText>{turn.text}</MarkdownText>}
       {turn.thinking && (
         <span className="animate-pulse text-base text-muted-foreground">Thinking…</span>
       )}

@@ -35,6 +35,16 @@ export interface ChatRequest {
   decision?: Decision;
 }
 
+/**
+ * One line of the route's NDJSON stream. `tool` upserts a trace line by id
+ * (running → settled), `text_delta` appends to the answer, and the final line
+ * is always a ChatResponse.
+ */
+export type StreamEvent =
+  | { type: "tool"; event: ToolEvent }
+  | { type: "text_delta"; delta: string }
+  | ChatResponse;
+
 export type ChatResponse =
   | {
       type: "turn_complete";

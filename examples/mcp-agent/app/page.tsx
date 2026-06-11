@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Composer } from "@fourthwall-examples/ui";
+import { Button, Composer } from "@fourthwall-examples/ui";
 import { Thread } from "@/components/Thread";
 import { StarterPrompts } from "@/components/StarterPrompts";
 import { ConnectGate } from "@/components/ConnectGate";
-import type { ChatResponse, Decision, ToolEvent, WireMessage } from "@/lib/types";
+import type { ChatResponse, Decision, StreamEvent, ToolEvent, WireMessage } from "@/lib/types";
 import type { AssistantDisplayTurn, DisplayTurn } from "@/lib/clientTypes";
 
 function initialsOf(label: string): string {
@@ -36,7 +36,9 @@ function applyResponse(turn: AssistantDisplayTurn, data: ChatResponse): Assistan
   };
   switch (data.type) {
     case "turn_complete":
-      return { ...base, text: data.text };
+      // Streamed deltas already carry the answer; the terminal text is the
+      // fallback for whatever didn't stream.
+      return { ...base, text: turn.text?.trim() ? turn.text : data.text };
     case "awaiting_approval":
       return { ...base, pending: data.pending };
     case "error":
@@ -83,6 +85,28 @@ export default function Page() {
     });
   }
 
+  function handleEvent(event: StreamEvent) {
+    if (event.type === "tool") {
+      updateLastAssistant((turn) => ({
+        ...turn,
+        thinking: false,
+        trace: mergeTrace(turn.trace, [event.event]),
+      }));
+    } else if (event.type === "text_delta") {
+      updateLastAssistant((turn) => ({
+        ...turn,
+        thinking: false,
+        sepPending: false,
+        text: turn.text
+          ? turn.text + (turn.sepPending ? "\n\n" : "") + event.delta
+          : event.delta,
+      }));
+    } else {
+      updateLastAssistant((turn) => applyResponse(turn, event));
+      if ("messages" in event && event.messages) setMessages(event.messages);
+    }
+  }
+
   async function post(wire: WireMessage[], decision?: Decision) {
     setBusy(true);
     try {
@@ -91,9 +115,22 @@ export default function Page() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: wire, decision }),
       });
-      const data: ChatResponse = await response.json();
-      updateLastAssistant((turn) => applyResponse(turn, data));
-      if ("messages" in data && data.messages) setMessages(data.messages);
+      if (!response.body) throw new Error("No response body");
+      // The route streams NDJSON: tool/text_delta events, then one terminal line.
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (line.trim()) handleEvent(JSON.parse(line) as StreamEvent);
+        }
+      }
+      if (buffer.trim()) handleEvent(JSON.parse(buffer) as StreamEvent);
     } catch {
       updateLastAssistant((turn) => ({
         ...turn,
@@ -120,8 +157,21 @@ export default function Page() {
   function decide(approved: boolean) {
     if (!pending || busy) return;
     const decision: Decision = { toolUseId: pending.toolUseId, approved };
-    updateLastAssistant((turn) => ({ ...turn, pending: undefined, thinking: true }));
+    updateLastAssistant((turn) => ({
+      ...turn,
+      pending: undefined,
+      thinking: true,
+      sepPending: turn.text != null,
+    }));
     void post(messages, decision);
+  }
+
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+    setConnected(false);
+    setShop(null);
+    setTurns([]);
+    setMessages([]);
   }
 
   function dismissAlert(index: number) {
@@ -149,11 +199,16 @@ export default function Page() {
           </div>
         </div>
         {connected && (
-          <div className="flex items-center gap-2 rounded-full border border-border py-1 pl-1 pr-3">
-            <span className="flex size-6 items-center justify-center rounded-full bg-accent text-[11px] font-semibold text-muted-foreground">
-              {initialsOf(shop ?? "Fourthwall")}
-            </span>
-            <span className="text-sm font-medium">{shop ?? "Connected"}</span>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 rounded-full border border-border py-1 pl-1 pr-3">
+              <span className="flex size-6 items-center justify-center rounded-full bg-accent text-[11px] font-semibold text-muted-foreground">
+                {initialsOf(shop ?? "Fourthwall")}
+              </span>
+              <span className="text-sm font-medium">{shop ?? "Connected"}</span>
+            </div>
+            <Button appearance="semi-transparent" size="xsmall" onClick={logout}>
+              Log out
+            </Button>
           </div>
         )}
       </header>
