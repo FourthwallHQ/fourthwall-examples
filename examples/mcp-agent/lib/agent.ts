@@ -7,7 +7,7 @@ import {
   type McpConnection,
   type McpTool,
 } from "./mcp";
-import { classifyCall, isOfferedReadOnly } from "./writeClassifier";
+import { classifyCall } from "./writeClassifier";
 import type { ChatResponse, Decision, ToolEvent, WireMessage } from "./types";
 
 const MODEL = "claude-opus-4-8";
@@ -15,15 +15,9 @@ const MAX_TOKENS = 2048;
 /** Hard cap on tool calls per turn so a misbehaving model can't fan out. */
 const MAX_TOOL_CALLS = 12;
 
-function systemPrompt(allowWrites: boolean): string {
-  const base = `You are a shop assistant for a creator's Fourthwall shop. Answer questions with live data fetched through the Fourthwall MCP tools — never invent numbers, orders, or products. Keep answers short and concrete; use lists for rankings and enumerations.
+const SYSTEM_PROMPT = `You are a shop assistant for a creator's Fourthwall shop. Answer questions with live data fetched through the Fourthwall MCP tools — never invent numbers, orders, or products. Keep answers short and concrete; use lists for rankings and enumerations.
 
 Tool calls that change the shop pause for the creator's explicit approval. If a call is denied, do not retry it — acknowledge the denial and offer a softer alternative.`;
-  if (allowWrites) return base;
-  return `${base}
-
-This deployment is read-only: tools that change the shop are not available, and write actions on the remaining tools will be refused. If asked to change something, explain that writes are disabled here.`;
-}
 
 function summarizeResult(text: string): string {
   try {
@@ -74,7 +68,6 @@ function findPendingToolUse(
 export interface TurnInput {
   messages: WireMessage[];
   decision?: Decision;
-  allowWrites: boolean;
 }
 
 export async function runTurn(input: TurnInput): Promise<ChatResponse> {
@@ -93,9 +86,8 @@ export async function runTurn(input: TurnInput): Promise<ChatResponse> {
   }
 
   try {
-    const offered = input.allowWrites ? mcp.tools : mcp.tools.filter(isOfferedReadOnly);
-    const toolsByName = new Map(offered.map((tool) => [tool.name, tool]));
-    const claudeTools = toClaudeTools(offered);
+    const toolsByName = new Map(mcp.tools.map((tool) => [tool.name, tool]));
+    const claudeTools = toClaudeTools(mcp.tools);
 
     const execute = async (
       block: Anthropic.Messages.ToolUseBlockParam,
@@ -170,7 +162,7 @@ export async function runTurn(input: TurnInput): Promise<ChatResponse> {
       const response = await anthropic.messages.create({
         model: MODEL,
         max_tokens: MAX_TOKENS,
-        system: systemPrompt(input.allowWrites),
+        system: SYSTEM_PROMPT,
         messages,
         tools: claudeTools,
         // One tool_use per round keeps the pause/resume protocol stateless: a
@@ -212,24 +204,6 @@ export async function runTurn(input: TurnInput): Promise<ChatResponse> {
       };
 
       if (classifyCall(tool, args) === "write") {
-        if (!input.allowWrites) {
-          messages.push(
-            toolResultMessage(
-              toolUse.id,
-              "Writes are disabled in this deployment (FOURTHWALL_MCP_ALLOW_WRITES is not set). Explain this to the creator instead of retrying.",
-              true,
-            ),
-          );
-          trace.push({
-            id: toolUse.id,
-            name: toolUse.name,
-            input: args,
-            status: "error",
-            summary: "writes disabled",
-            detail: formatArgs(args),
-          });
-          continue;
-        }
         trace.push({
           id: toolUse.id,
           name: toolUse.name,

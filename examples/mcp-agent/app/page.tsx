@@ -8,12 +8,14 @@ import { ConnectGate } from "@/components/ConnectGate";
 import type { ChatResponse, Decision, ToolEvent, WireMessage } from "@/lib/types";
 import type { AssistantDisplayTurn, DisplayTurn } from "@/lib/clientTypes";
 
-const SHOP_LABEL = process.env.NEXT_PUBLIC_SHOP_LABEL ?? "Your shop";
-const SHOP_INITIALS = SHOP_LABEL.split(/[^a-zA-Z0-9]+/)
-  .filter(Boolean)
-  .slice(0, 2)
-  .map((word) => word[0].toUpperCase())
-  .join("");
+function initialsOf(label: string): string {
+  return label
+    .split(/[^a-zA-Z0-9]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((word) => word[0].toUpperCase())
+    .join("");
+}
 
 function mergeTrace(existing: ToolEvent[], incoming: ToolEvent[]): ToolEvent[] {
   const merged = [...existing];
@@ -49,6 +51,7 @@ export default function Page() {
   const [messages, setMessages] = useState<WireMessage[]>([]);
   const [busy, setBusy] = useState(false);
   const [connected, setConnected] = useState<boolean | null>(null);
+  const [shop, setShop] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | undefined>();
 
   useEffect(() => {
@@ -60,8 +63,9 @@ export default function Page() {
     }
     fetch("/api/auth/status")
       .then((response) => response.json())
-      .then((data: { connected: boolean }) => {
+      .then((data: { connected: boolean; shop: string | null }) => {
         setConnected(data.connected);
+        setShop(data.shop);
         if (failed) setAuthError(failed);
       })
       .catch(() => setConnected(false));
@@ -144,19 +148,21 @@ export default function Page() {
             </span>
           </div>
         </div>
-        <div className="flex items-center gap-2 rounded-full border border-border py-1 pl-1 pr-3">
-          <span className="flex size-6 items-center justify-center rounded-full bg-accent text-[11px] font-semibold text-muted-foreground">
-            {SHOP_INITIALS}
-          </span>
-          <span className="text-sm font-medium">{SHOP_LABEL}</span>
-        </div>
+        {connected && (
+          <div className="flex items-center gap-2 rounded-full border border-border py-1 pl-1 pr-3">
+            <span className="flex size-6 items-center justify-center rounded-full bg-accent text-[11px] font-semibold text-muted-foreground">
+              {initialsOf(shop ?? "Fourthwall")}
+            </span>
+            <span className="text-sm font-medium">{shop ?? "Connected"}</span>
+          </div>
+        )}
       </header>
 
       <main className="flex-1">
         {connected === false ? (
           <ConnectGate authError={authError} />
         ) : turns.length === 0 ? (
-          connected != null && <StarterPrompts onPick={send} />
+          connected != null && <StarterPrompts shop={shop} onPick={send} />
         ) : (
           <Thread turns={turns} busy={busy} onDecide={decide} onDismissAlert={dismissAlert} />
         )}

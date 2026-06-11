@@ -32,7 +32,6 @@ export async function POST(request: Request): Promise<NextResponse<ChatResponse>
     const outcome = await runTurn({
       messages: body.messages,
       decision: body.decision,
-      allowWrites: process.env.FOURTHWALL_MCP_ALLOW_WRITES === "true",
     });
     return NextResponse.json(outcome);
   } catch (err) {

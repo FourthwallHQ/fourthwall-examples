@@ -65,6 +65,28 @@ export function toClaudeTools(tools: McpTool[]): Anthropic.Messages.Tool[] {
   }));
 }
 
+/**
+ * Looks up the shop the OAuth session is bound to, for the header pill.
+ * Best-effort: any failure (or an unexpected catalog shape) just means no
+ * label.
+ */
+export async function fetchShopLabel(): Promise<string | undefined> {
+  let mcp: McpConnection | undefined;
+  try {
+    mcp = await connectMcp();
+    const result = await mcp.client.callTool({ name: "show_shops", arguments: {} });
+    const structured = result.structuredContent as
+      | { shops?: Array<{ name?: string; isCurrent?: boolean }> }
+      | undefined;
+    const shops = structured?.shops ?? [];
+    return (shops.find((shop) => shop.isCurrent) ?? shops[0])?.name;
+  } catch {
+    return undefined;
+  } finally {
+    await mcp?.close().catch(() => {});
+  }
+}
+
 export interface ToolResult {
   text: string;
   isError: boolean;

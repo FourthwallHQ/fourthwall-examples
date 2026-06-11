@@ -44,12 +44,8 @@ in order of trust:
    (create/update/delete/… prefixes are writes).
 
 Anything ambiguous is treated as a write — an unknown tool never runs silently.
-
-**Read-only mode is the default.** With `FOURTHWALL_MCP_ALLOW_WRITES` unset,
-write-only tools are *withheld* from Claude entirely (it can't even see them),
-and the system prompt explains the mode. The polymorphic `manage_*` tools stay
-offered so their read actions keep working; a write action on one is refused
-with an explanatory tool result rather than executed.
+The approval panel is the only write gate: nothing reaches the shop without an
+explicit **Allow**.
 
 ## Authentication — in-app MCP OAuth
 
@@ -90,9 +86,9 @@ pnpm --filter mcp-agent dev
 
 Open http://localhost:3000 and click **Connect Fourthwall**.
 
-To exercise the approval gate, set `FOURTHWALL_MCP_ALLOW_WRITES=true` and ask
-for something like *"Create a 15% discount code SUMMER15"* — the turn blocks on
-the approval panel before anything reaches the shop.
+To exercise the approval gate, ask for something like *"Create a 15% discount
+code SUMMER15"* — the turn blocks on the approval panel before anything reaches
+the shop.
 
 ## Simplifications
 

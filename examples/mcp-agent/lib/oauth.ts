@@ -25,6 +25,7 @@ interface AuthStore {
   codeVerifier?: string;
   state?: string;
   pendingAuthUrl?: string;
+  shopLabel?: string;
 }
 
 const store: AuthStore = ((globalThis as Record<string, unknown>).__mcpAgentAuth ??=
@@ -86,6 +87,14 @@ export const oauthProvider = new InMemoryOAuthProvider();
 
 export function isConnected(): boolean {
   return store.tokens != null;
+}
+
+export function shopLabel(): string | undefined {
+  return store.shopLabel;
+}
+
+export function saveShopLabel(label: string | undefined): void {
+  store.shopLabel = label;
 }
 
 export function clearSession(): void {

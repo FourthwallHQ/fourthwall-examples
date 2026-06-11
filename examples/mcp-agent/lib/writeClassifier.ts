@@ -18,7 +18,6 @@ const READ_ACTIONS = new Set(["list", "get", "read", "show", "search", "find", "
 const READ_NAME = /^(get|list|show|search|fetch|read|describe)([_-]|$)/i;
 const WRITE_NAME =
   /^(create|update|delete|cancel|refund|issue|publish|upload|set|toggle)([_-]|$)/i;
-const POLYMORPHIC_NAME = /^manage([_-]|$)/i;
 
 export function classifyCall(
   tool: McpTool,
@@ -33,17 +32,4 @@ export function classifyCall(
   if (WRITE_NAME.test(tool.name)) return "write";
   if (READ_NAME.test(tool.name)) return "read";
   return "write";
-}
-
-/**
- * Read-only mode withholds tools from Claude rather than refusing calls.
- * Polymorphic `manage_*` tools can't be withheld without losing their read
- * actions, so they stay offered and their write actions are refused at
- * execution time instead.
- */
-export function isOfferedReadOnly(tool: McpTool): boolean {
-  if (tool.annotations?.readOnlyHint === true) return true;
-  if (POLYMORPHIC_NAME.test(tool.name)) return true;
-  if (tool.annotations == null && READ_NAME.test(tool.name)) return true;
-  return false;
 }

@@ -5,7 +5,13 @@ const PROMPTS = [
   "Show my shop details",
 ];
 
-export function StarterPrompts({ onPick }: { onPick: (prompt: string) => void }) {
+export function StarterPrompts({
+  shop,
+  onPick,
+}: {
+  shop?: string | null;
+  onPick: (prompt: string) => void;
+}) {
   return (
     <div className="flex min-h-[520px] flex-col items-center justify-center gap-5 py-12 text-center">
       <div className="flex size-14 items-center justify-center rounded-[18px] bg-primary text-primary-foreground">
@@ -16,7 +22,7 @@ export function StarterPrompts({ onPick }: { onPick: (prompt: string) => void })
       <div className="flex flex-col gap-2">
         <span className="text-xl font-semibold">Ask anything about your shop</span>
         <span className="text-base text-muted-foreground">
-          Answers come live from your shop through the Fourthwall MCP server.
+          Answers come live from {shop ?? "your shop"} through the Fourthwall MCP server.
         </span>
       </div>
       <div className="flex max-w-[560px] flex-wrap justify-center gap-2.5">
