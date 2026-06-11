@@ -207,7 +207,6 @@ export default function Page() {
         <Composer
           placeholder={pending ? "Waiting for your decision…" : "Ask about your shop…"}
           disabled={busy || pending != null || connected !== true}
-          meta={connected ? "Connected to mcp.fourthwall.com" : "Not connected"}
           onSend={send}
         />
       </div>
