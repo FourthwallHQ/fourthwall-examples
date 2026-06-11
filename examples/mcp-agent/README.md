@@ -38,13 +38,14 @@ terminal payload — the completed turn, an approval request, or an error.
 A call pauses for approval when it would change the shop. Classification reads,
 in order of trust:
 
-1. **MCP annotations** — `readOnlyHint: true` marks a tool safe (the Fourthwall
-   server annotates all of its tools).
-2. **The call's `action` argument** — Fourthwall's `manage_*` tools are
-   polymorphic (`{ action: "list" }` vs `{ action: "create" }`), so the verb
-   lives in the input. List/get/search-style actions run free; everything else
-   pauses.
-3. **A name heuristic** as the fallback for unannotated servers
+1. **MCP annotations** — `readOnlyHint: true` marks a tool safe. The Fourthwall
+   server annotates its whole catalog (`readOnlyHint` / `destructiveHint` on
+   every tool), so this tier decides every call in practice.
+2. **The call's `action` argument** — a fallback for servers with polymorphic
+   tools that carry the verb in the input (`{ action: "list" }` vs
+   `{ action: "create" }`). List/get/search-style actions run free; everything
+   else pauses.
+3. **A name heuristic** as the last resort for unannotated servers
    (create/update/delete/… prefixes are writes).
 
 Anything ambiguous is treated as a write — an unknown tool never runs silently.
@@ -74,6 +75,7 @@ expired), the turn surfaces a critical alert with a **Reconnect** button.
 ## Setup
 
 ```bash
+cd examples/mcp-agent
 cp .env.local.example .env.local
 ```
 
