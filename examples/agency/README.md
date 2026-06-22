@@ -56,7 +56,7 @@ From the repo root:
 
 ```bash
 pnpm install
-pnpm --filter greenroom dev   # http://localhost:3000
+pnpm --filter agency dev   # http://localhost:3000
 ```
 
 ## The credential core (`lib/fourthwall.ts`)

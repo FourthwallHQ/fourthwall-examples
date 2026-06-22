@@ -498,12 +498,15 @@ export const openApi = {
     });
   },
 
-  /** F4 — list base-product templates the design pipeline can render. */
+  /** F4 — list base-product templates the design pipeline can render. The
+   * endpoint is fixed-page (≈25) + path-based pagination (`/page/{N}`); it takes
+   * no `size` param and no server-side renderable filter, so we filter to
+   * `supportsBackendRendering` in the route handler. This is page 1 only. */
   async listProductTemplates(
     shopId: string,
   ): Promise<OpenApiPageResponse<ProductTemplateSummaryWire>> {
     return apiRequest<OpenApiPageResponse<ProductTemplateSummaryWire>>(
-      "/open-api/v1.0/product-templates?size=50",
+      "/open-api/v1.0/product-templates",
       { shopId },
     );
   },
