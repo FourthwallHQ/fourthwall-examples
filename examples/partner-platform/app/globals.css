@@ -1,0 +1,5 @@
+@import "tailwindcss";
+@import "@fourthwall-examples/ui/theme.css";
+
+/* Scan the component library's source so its utility classes are generated. */
+@source "../../../packages/ui/src";
