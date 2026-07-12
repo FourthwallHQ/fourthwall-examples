@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { Alert, Button, Checkbox, Input, Select, Switch } from '@fourthwall-examples/ui';
+import { useMemo, useState } from 'react';
+import { Alert, Button, Checkbox, Input, Select, Switch, Tag } from '@fourthwall-examples/ui';
 import { Section } from '@/components/Section';
 import type { GiftingConfig, Product, ProductsPolicy, ShippingPolicy } from '@/lib/fourthwall';
 import type { EmbeddedAuth } from '@/lib/embeddedSettings';
@@ -32,6 +32,32 @@ export function GiftingSettings({ auth, products, initial, onSaved }: GiftingSet
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The offer the public /gift page will hand to POST /api/checkout. Selection is
+  // client-side (in-memory only) — the URL below is the persistence: whoever holds
+  // it holds the choice. Lazy-initialized to the first product so an out-of-the-box
+  // demo has a valid URL without a click; the operator can pick another anytime.
+  const [publicOfferId, setPublicOfferId] = useState<string>(() => products[0]?.id ?? '');
+  const [copied, setCopied] = useState(false);
+
+  // Built in the browser so an ngrok/tunnel URL is picked up automatically. Empty
+  // string during SSR — the input just hasn't hydrated yet.
+  const publicGiftUrl = useMemo(() => {
+    if (!publicOfferId) return '';
+    if (typeof window === 'undefined') return '';
+    return `${window.location.origin}/gift?offerId=${encodeURIComponent(publicOfferId)}`;
+  }, [publicOfferId]);
+
+  async function copyUrl() {
+    if (!publicGiftUrl) return;
+    try {
+      await navigator.clipboard.writeText(publicGiftUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard blocked (permissions / non-secure origin) — silently no-op; the
+      // input value is selectable so the operator can copy by hand.
+    }
+  }
 
   // Another integration already owns the shop's single gifting slot — the write
   // would be rejected server-side by the one-platform-per-shop mutex.
@@ -96,15 +122,78 @@ export function GiftingSettings({ auth, products, initial, onSaved }: GiftingSet
   const showOfferList = productsType !== 'ALL';
 
   return (
-    <Section
-      title="Gifting settings"
-      description="The rules applied when a supporter gifts on your live storefront."
-      footer={
-        <Button appearance="primary" loading={saving} disabled={conflicted} onClick={save}>
-          Save settings
-        </Button>
-      }
-    >
+    <div className="space-y-8">
+      <Section
+        title="Public gifting page"
+        description="Pick the gift offer this app's public /gift page sends to the paid checkout endpoint, then share its URL. Supporters open it and are redirected straight to Fourthwall checkout — no live stream, no modal."
+        aside={<Tag appearance={publicOfferId ? 'success' : 'neutral'}>{publicOfferId ? 'Ready to share' : 'Pick an offer'}</Tag>}
+      >
+        <div className="space-y-4">
+          {products.length === 0 ? (
+            <Alert appearance="alert" title="No products found">
+              Add a product to this shop before sharing a public gift link.
+            </Alert>
+          ) : (
+            <Select
+              label="Gift offer"
+              value={publicOfferId}
+              onChange={(e) => setPublicOfferId(e.target.value)}
+            >
+              {products.map((product) => (
+                <option key={product.id} value={product.id}>
+                  {product.name}
+                </option>
+              ))}
+            </Select>
+          )}
+
+          <div className="flex items-end gap-2">
+            <div className="flex-1">
+              <Input
+                label="Shareable URL"
+                readOnly
+                value={publicGiftUrl}
+                placeholder="Select an offer to generate the URL"
+                onFocus={(e) => e.currentTarget.select()}
+              />
+            </div>
+            <Button
+              type="button"
+              appearance="secondary"
+              onClick={copyUrl}
+              disabled={!publicGiftUrl}
+            >
+              {copied ? 'Copied' : 'Copy'}
+            </Button>
+            <a
+              href={publicGiftUrl || undefined}
+              target="_blank"
+              rel="noreferrer"
+              aria-disabled={!publicGiftUrl}
+              tabIndex={publicGiftUrl ? 0 : -1}
+              className={publicGiftUrl ? '' : 'pointer-events-none opacity-50'}
+            >
+              <Button type="button" appearance="secondary" disabled={!publicGiftUrl}>
+                Open
+              </Button>
+            </a>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            The URL carries <code className="font-mono">offerId</code> — supporters click{' '}
+            <strong>Gift now</strong> and the app creates the paid checkout on their behalf.
+          </p>
+        </div>
+      </Section>
+
+      <Section
+        title="Gifting settings"
+        description="The rules applied to gifts issued after a supporter pays through the public gift page."
+        footer={
+          <Button appearance="primary" loading={saving} disabled={conflicted} onClick={save}>
+            Save settings
+          </Button>
+        }
+      >
       <div className="space-y-5">
         {conflicted && (
           <Alert appearance="alert" title={`Another platform owns gifting (${initial.platform})`}>
@@ -124,7 +213,7 @@ export function GiftingSettings({ auth, products, initial, onSaved }: GiftingSet
         )}
 
         <Switch
-          label="Gift while live"
+          label="Gifting enabled"
           checked={enabled}
           onChange={(e) => setEnabled(e.currentTarget.checked)}
         />
@@ -190,5 +279,6 @@ export function GiftingSettings({ auth, products, initial, onSaved }: GiftingSet
         </div>
       </div>
     </Section>
+    </div>
   );
 }

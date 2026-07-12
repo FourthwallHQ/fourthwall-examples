@@ -1,16 +1,21 @@
 # Streaming Gifting
 
 A complete, runnable reference for Fourthwall's **gift-purchase giveaway** flow,
-built as a Platform App so you can read the code end to end. While a creator is
-live, a supporter buys a **gift offer**; Fourthwall mints the gifts and fires
-`GIFT_PURCHASE`; viewers enter in chat with `!enter`; when the window closes the
-app **picks the winner(s) itself** and routes each to a redemption page to claim
-their gift.
+built as a Platform App so you can read the code end to end. The creator picks a
+gift offer in the embedded settings and shares a public `/gift?offerId=…` URL; a
+supporter opens it, clicks **Gift now**, and the app creates a paid gifting
+checkout in the background and redirects the browser straight to Fourthwall
+checkout. After payment Fourthwall mints the gifts and fires `GIFT_PURCHASE`;
+viewers enter in chat with `!enter`; when the window closes the app **picks the
+winner(s) itself** and routes each to a redemption page to claim their gift.
 
 The key thing this models is the integrator's half of the flow:
 
-- **The server mints the gifts.** They arrive on the `GIFT_PURCHASE` webhook, each
-  with its own `gft_…` id — the app **never creates a giveaway**.
+- **The app opens the checkout, the server mints the gifts.** The public gift
+  page hands its URL-supplied `offerId` to `POST /open-api/v1.0/gifting/checkout`
+  and redirects the supporter to the returned `checkoutUrl`. Gifts arrive later
+  on the `GIFT_PURCHASE` webhook, each with its own `gft_…` id — the app
+  **never creates a giveaway**.
 - **The app runs the draw and assigns winners.** It opens a short window (the
   config's entry time limit), gathers `!enter` from chat, picks up to one winner
   per gift at random, and hands each winner the redemption link for their gift.
@@ -27,15 +32,20 @@ The key thing this models is the integrator's half of the flow:
 
 | Page | Purpose |
 | --- | --- |
-| `/` | **Embedded settings / operator cockpit** — iframed inside the Fourthwall dashboard and HMAC-verified. Set the gifting rules, flip the shop **live** (a test affordance — see below), watch the draw, and read the winner(s) + their redeem link. No connect button: the app is installed via OAuth and managed here. |
+| `/` | **Embedded settings / operator cockpit** — iframed inside the Fourthwall dashboard and HMAC-verified. Pick the gift offer for the public page, edit the gifting rules, watch the draw, and read the winner(s) + their redeem link. No connect button: the app is installed via OAuth and managed here. |
+| `/gift?offerId=<id>` | **Public gift page** — the stable, unauthenticated supporter-facing link the creator shares. Shows the chosen offer and one **Gift now** action; clicking it hits `POST /api/checkout` and hard-redirects the browser to Fourthwall's returned `checkoutUrl`. |
 | `/installed` | **Install fallback** — on success the callback returns the creator to the app's page in the dashboard; this page only shows install errors. |
 | `/chat?user=<name>` | **Mock chat** — post as the viewer named in `?user=`; `!enter` joins the open draw. Open several tabs with different names to enter as distinct viewers. The entry seam. |
 | `/redeem` | **Winner redemption** — a fake-OAuth claim page: enter your chat name to prove you're a winner, then claim your gift on the storefront. The redemption seam. |
 
 This is **embed-first**: the creator installs the app and manages it inside the
-Fourthwall dashboard, the same shape as the Streaming Alerts example. In-memory
-only — the token, the cached entry-window length, and the current draw (with its
-winners) live in memory and reset on restart. No database, no broker.
+Fourthwall dashboard, the same shape as the Streaming Alerts example. **In-memory
+only, single-shop demo** — the connection, the cached entry-window length, and
+the current draw (with its winners) live in memory and reset on restart. The
+public `/gift?offerId=…` link is served by the same in-memory server that holds
+the connection, so it works only for a single connected shop and only until the
+process restarts. No database, no broker — swap in real storage for a hosted
+deployment.
 
 ## Setup
 
@@ -51,7 +61,9 @@ winners) live in memory and reset on restart. No database, no broker.
 
 2. **Register a Platform App** in Fourthwall (Settings → For developers / Platform
    Apps).
-   - Grant the scopes **`giveaway_write` + `webhook_write` + `offer_read`**.
+   - Grant the scopes **`giveaway_write` + `webhook_write` + `offer_read`**
+     (`giveaway_write` covers both editing the gifting config and creating
+     gifting checkouts through `POST /open-api/v1.0/gifting/checkout`).
    - In the **OAuth** tab set the redirect URI to `<base-url>/oauth`.
    - Set the app's **embedded settings URL** to `<base-url>/` and note its **HMAC
      key**.
@@ -97,13 +109,14 @@ The verification path is identical to production — no bypass.
 1. In the embedded settings page, set the **gifting rules** — gift-while-live,
    entry time limit (20–180s), shipping policy, giftable products — and **Save**.
    These persist through `GET`/`PUT /open-api/v1.0/gifting/config`.
-2. **Go live.** The gift offer is only purchasable while the shop is live. In
-   production the creator's streaming platform sets this; this example exposes a
-   **Go live** toggle in the cockpit (`PUT /open-api/v1.0/streaming/start`) purely
-   so you can exercise the flow without a real stream.
-3. A supporter buys a **gift offer** on the storefront. Fourthwall mints the gifts
-   and fires `GIFT_PURCHASE`; the app opens an entry window and posts the
-   `NEW GIVEAWAY — !ENTER TO WIN…` announcement.
+2. In the **Public gifting page** section, pick a **gift offer** and copy its
+   shareable `/gift?offerId=…` URL. Share that URL with supporters — no live
+   stream is required, the platform's gifting-checkout endpoint no longer gates
+   on stream status.
+3. A supporter opens the URL, clicks **Gift now**, and the browser is redirected
+   straight to Fourthwall checkout for that offer. On successful payment
+   Fourthwall mints the gifts and fires `GIFT_PURCHASE`; the app opens an entry
+   window and posts the `NEW GIVEAWAY — !ENTER TO WIN…` announcement.
 4. Open `/chat?user=alice` in another tab and post `!enter`; open more tabs with
    different `?user=` names to enter as distinct viewers. Watch the entrant count
    climb on the settings page.
@@ -114,8 +127,7 @@ The verification path is identical to production — no bypass.
    winners list — claims their gift on the storefront's `/gifts/{giftId}` page.
 
 > **Draws open from `GIFT_PURCHASE`** — there's no manual "open" button. To
-> exercise the full flow, make a real gift-offer purchase on the storefront while
-> the shop is live.
+> exercise the full flow, complete a real checkout from `/gift?offerId=…`.
 
 ## Webhooks
 
@@ -127,17 +139,21 @@ draw from them; the disconnect event forgets the shop on uninstall.
 
 ## Notes
 
-- **The app owns winner selection.** Gifts are minted by the server and arrive on
-  the webhook; the app picks winners and routes each to their gift's redemption
-  page. It never calls Create Giveaway or finish-draw — the `gft_…` link is the
-  only contract back to Fourthwall.
+- **The app owns the checkout, not the gift.** The public page hands `offerId`
+  to `POST /open-api/v1.0/gifting/checkout` and redirects to the returned
+  `checkoutUrl`. Gifts are minted by the server after payment and arrive on the
+  `GIFT_PURCHASE` webhook — the app never calls Create Giveaway or finish-draw.
+  The `gft_…` link is the only contract back to Fourthwall.
+- **Variant selection lives in Fourthwall checkout.** The example sends only
+  `offerId`; the supporter picks size/color/etc. on Fourthwall's checkout page.
 - **Redemption is gated by the winner, not the link.** The per-winner `gft_` links
   stay private; the app broadcasts only `/redeem`, which reveals a winner's gift
   link after they identify themselves. The fake "type your chat name" check stands
   in for the real Twitch winner authentication.
-- **The Go-live toggle is a test affordance.** A real integration never sets
-  streaming status — the creator's streaming platform does. It lives in the cockpit
-  only so the gift-while-live flow is exercisable locally.
+- **Public page is unauthenticated by design.** `/gift` and `POST /api/checkout`
+  are the supporter-facing seams — they resolve the single connected shop from
+  the in-memory store. A multi-shop deployment would replace `firstConnection()`
+  with a shop-scoped route or a persistent shop→offer mapping.
 - **One platform per shop.** Gifting has a single slot — if another integration
   (`TWITCH`/`STREAMELEMENTS`) owns it, the settings page surfaces the conflict.
 - **Reference code, not production.** No persistence, no anti-fraud beyond
@@ -148,7 +164,9 @@ draw from them; the disconnect event forgets the shop on uninstall.
 ```
 app/
   page.tsx                  Embedded settings page — HMAC-verify, then render Controls
-  Controls.tsx              Operator cockpit (stream status, settings, draw, winners); signed calls
+  Controls.tsx              Operator cockpit (gifting settings, draw, winners); signed calls
+  gift/page.tsx             Public /gift?offerId=… supporter page (unauthenticated)
+  gift/GiftNowButton.tsx    Client action → POST /api/checkout → redirect to checkoutUrl
   installed/page.tsx        Install fallback (errors / domain-less success)
   chat/page.tsx             Mock chat (the entry seam)
   redeem/page.tsx           Fake-OAuth winner redemption (the redemption seam)
@@ -156,7 +174,7 @@ app/
   api/oauth/route.ts        Token exchange, register webhooks, store → back to dashboard
   api/dev/settings-url/route.ts  DEV ONLY: mint a signed settings URL for localhost
   api/settings/route.ts     Write the gifting config (signed)
-  api/streaming/route.ts    Read/toggle the shop's live status (signed) — the Go-live affordance
+  api/checkout/route.ts     Public bridge → POST /open-api/v1.0/gifting/checkout, return checkoutUrl
   api/webhooks/route.ts     Verify HMAC; GIFT_PURCHASE → open draw; disconnect → forget shop
   api/chat/route.ts         !enter → add to the open draw's entrant set
   api/redeem/route.ts       Match a chat name against stored winners → return their gift link
@@ -164,7 +182,7 @@ app/
   api/events/[shopId]/route.ts  SSE draw-state stream for the cockpit
   api/state/route.ts        Cockpit bootstrap — products + gifting config + draw (signed)
 lib/
-  fourthwall.ts             Platform API client (token/shop/products/gifting-config/streaming/webhook)
+  fourthwall.ts             Platform API client (token/shop/products/gifting-config/checkout/webhook)
   store.ts                  In-memory per-shop connection state
   draw.ts                   Lifecycle: open-from-purchase, entry window, winner pick + redeem links
   channel.ts                In-memory per-shop pub/sub for SSE

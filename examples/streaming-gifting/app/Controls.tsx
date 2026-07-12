@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Alert } from '@fourthwall-examples/ui';
-import { StreamStatus } from '@/components/StreamStatus';
 import { GiftingSettings } from '@/components/GiftingSettings';
 import { DrawPanel } from '@/components/DrawPanel';
 import { WinnerPanel } from '@/components/WinnerPanel';
@@ -97,8 +96,6 @@ export function Controls({ auth }: { auth: EmbeddedAuth }) {
           available.
         </Alert>
       )}
-
-      <StreamStatus auth={auth} />
 
       {snapshot.config && (
         <GiftingSettings

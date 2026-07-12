@@ -2,11 +2,11 @@
  * The Fourthwall Platform API client. This is the ONLY module that reads
  * `FOURTHWALL_APP_SECRET` (inside the OAuth token exchange).
  *
- * Mirrors the real Twitch gifting flow: the server mints a draw on each gift
- * purchase (delivered via the `GIFT_PURCHASE` webhook) and this app only reads
- * the gifting rules, finishes the draw with the picked winners, and manages its
- * webhook subscriptions — it never creates a giveaway. Kept thin so a contract
- * change is a one-file edit.
+ * The example's server holds a shop access token, reads gifting rules + product
+ * offers, opens a paid gifting checkout for the public gift page, and manages its
+ * webhook subscriptions. Gifts themselves are minted by the platform after
+ * payment and delivered on the `GIFT_PURCHASE` webhook — this app never creates
+ * a giveaway. Kept thin so a contract change is a one-file edit.
  */
 
 /** The OAuth scopes this example requests. */
@@ -168,72 +168,50 @@ export async function updateGiftingConfig(
 }
 
 /**
- * The shop's live streaming status, as the public `/streaming` surface exposes it.
+ * Request to create a paid gifting checkout for a single offer.
  *
- * The gift offer only appears on the storefront *while the shop is live* — the
- * checkout's giveaway gate calls `isStreamLive`. For an `OPEN_API` gifting app
- * that gate reads the `TWITCH` carrier's online flag, so this is the lever that
- * makes a gift purchasable.
- *
- * In a real integration the creator's streaming platform (Twitch EventSub, etc.)
- * drives this and the gifting app never touches it. This example exposes a manual
- * toggle purely so the gift-while-live flow is exercisable without a live stream.
+ * The public gifting page hands the URL-supplied `offerId` to this call; the
+ * platform validates ownership + eligibility, mints the checkout, and returns an
+ * absolute `checkoutUrl` we redirect the supporter to. `preselectedAvailableVariants`
+ * is intentionally not sent — variant selection belongs on Fourthwall's checkout.
  */
-export interface StreamingStatus {
-  live: boolean;
+export interface CreateGiftingCheckout {
+  /** The offer (product) id to gift; the same value used everywhere as `offerId`. */
+  offerId: string;
+  /** Number of gifts to mint on successful payment. Server clamps to 1–10000. */
+  quantity?: number;
+  /** Display currency; defaults to the shop's currency when omitted. */
+  currency?: string;
 }
 
-interface RawStreamingStatus {
-  services?: Array<{ status?: 'ONLINE' | 'OFFLINE' }>;
-}
-
-/** Read whether the shop is currently live. Requires `giveaway_write` (GIFTING). */
-export async function getStreamingStatus(accessToken: string): Promise<StreamingStatus> {
-  const res = await ensureOk(
-    await fetch(`${apiUrl()}/open-api/v1.0/streaming`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    }),
-    'Get streaming status',
-  );
-  const data = (await res.json()) as RawStreamingStatus;
-  return { live: (data.services ?? []).some((s) => s.status === 'ONLINE') };
+/** The paid checkout the gifting endpoint returns — the URL is what we redirect to. */
+export interface GiftingCheckout {
+  checkoutId: string;
+  /** Absolute, directable checkout URL on the shop's domain. Redirect straight to this. */
+  checkoutUrl: string;
 }
 
 /**
- * Mark the shop live so the gift offer becomes purchasable. Sets the `TWITCH`
- * carrier online — the flag the `OPEN_API` live-gate reads. Broadcaster fields are
- * placeholders; the gate only checks the online status. Requires `giveaway_write`.
+ * Create a paid gifting checkout for the given offer. The platform owns the
+ * eligibility gate (giftable, valid offer, connected slot); we just forward
+ * `offerId` and hand back the absolute `checkoutUrl`. Requires `giveaway_write`.
+ *
+ * Post-payment, the platform mints the gifts and fires `GIFT_PURCHASE` — the
+ * existing webhook path opens the draw. This call does NOT mint gifts.
  */
-export async function startStreaming(accessToken: string): Promise<void> {
-  await ensureOk(
-    await fetch(`${apiUrl()}/open-api/v1.0/streaming/start`, {
-      method: 'PUT',
+export async function createGiftingCheckout(
+  accessToken: string,
+  request: CreateGiftingCheckout,
+): Promise<GiftingCheckout> {
+  const res = await ensureOk(
+    await fetch(`${apiUrl()}/open-api/v1.0/gifting/checkout`, {
+      method: 'POST',
       headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        services: [
-          {
-            type: 'TWITCH',
-            broadcasterId: 'gifting-example',
-            broadcasterLogin: 'gifting-example',
-            thumbnailUrl: null,
-          },
-        ],
-      }),
+      body: JSON.stringify(request),
     }),
-    'Start streaming',
+    'Create gifting checkout',
   );
-}
-
-/** Mark the shop offline again. Requires `giveaway_write` (GIFTING). */
-export async function endStreaming(accessToken: string): Promise<void> {
-  await ensureOk(
-    await fetch(`${apiUrl()}/open-api/v1.0/streaming/end`, {
-      method: 'PUT',
-      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ services: ['TWITCH'] }),
-    }),
-    'End streaming',
-  );
+  return (await res.json()) as GiftingCheckout;
 }
 
 /**
